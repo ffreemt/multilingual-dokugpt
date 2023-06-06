@@ -20,6 +20,6 @@ click
 openpyxl
 loguru
 gradio
-charset_normalzier
+charset-normalizer
 PyPDF2
 epub2txt
