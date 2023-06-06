@@ -4,7 +4,7 @@ and https://github.com/PromtEngineer/localGPT/blob/main/ingest.py
 
 https://python.langchain.com/en/latest/getting_started/tutorials.html
 """
-# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long
+# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements
 import os
 import time
 from pathlib import Path
@@ -13,11 +13,15 @@ from types import SimpleNamespace
 import gradio as gr
 from charset_normalizer import detect
 from chromadb.config import Settings
+from epub2txt import epub2txt
 from langchain.chains import RetrievalQA
 from langchain.docstore.document import Document
-
-# Docx2txtLoader
-from langchain.document_loaders import CSVLoader, PDFMinerLoader, TextLoader
+from langchain.document_loaders import (
+    CSVLoader,
+    Docx2txtLoader,
+    PDFMinerLoader,
+    TextLoader,
+)
 
 # from constants import CHROMA_SETTINGS, SOURCE_DIRECTORY, PERSIST_DIRECTORY
 from langchain.embeddings import HuggingFaceInstructEmbeddings
@@ -35,7 +39,6 @@ from transformers import LlamaForCausalLM, LlamaTokenizer, pipeline
 
 # import click
 # from typing import List
-
 
 # from utils import xlxs_to_csv
 
@@ -87,15 +90,26 @@ def load_single_document(file_path: str | Path) -> Document:
         loader = PDFMinerLoader(file_path)
     elif file_path.endswith(".csv"):
         loader = CSVLoader(file_path)
-    # elif file_path.endswith(".epub"): # for epub? epub2txt unstructured
+    elif Path(file_path).suffix in [".docx"]:
+        try:
+            loader = Docx2txtLoader(file_path)
+        except Exception as exc:
+            logger.error(f" {file_path} errors: {exc}")
+            return Document(page_content="", metadata={"source": file_path})
+    elif Path(file_path).suffix in [".epub"]:  # for epub? epub2txt unstructured
+        try:
+            _ = epub2txt(file_path)
+        except Exception as exc:
+            logger.error(f" {file_path} errors: {exc}")
+            return Document(page_content="", metadata={"source": file_path})
+        return Document(page_content=_, metadata={"source": file_path})
     else:
         if encoding is None:
             logger.warning(
                 f" {file_path}'s encoding is None "
                 "Likely binary files, return empty str "
             )
-            return ""
-
+            return Document(page_content="", metadata={"source": file_path})
         try:
             loader = TextLoader(file_path)
         except Exception as exc:
@@ -319,6 +333,9 @@ def main():
 
         def respond(message, chat_history):
             # bot_message = random.choice(["How are you?", "I love you", "I'm very hungry"])
+            if ns.qa is None:  # no files processed yet
+                return "Provide some file(s) for processsing first.", chat_history
+
             res = ns.qa(message)
             answer, docs = res["result"], res["source_documents"]
             bot_message = f"{answer} ({docs})"
