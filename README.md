@@ -1,5 +1,5 @@
 ---
-title: Localgpt
+title: localgpt
 emoji: 🦀
 colorFrom: green
 colorTo: red
