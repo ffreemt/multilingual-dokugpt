@@ -12,12 +12,12 @@ echo export PATH=~/.local/bin:$PATH > ~/.bashrc
 source ~/.bashrc
 # ~/.local/bin/poetry install
 
-wget -c https://deb.nodesource.com/setup_14.x
-bash setup_14.x
+wget -c https://deb.nodesource.com/setup_18.x
+bash setup_18.x
 apt-get install -y nodejs
 npm install -g npm@latest
 npm install -g nodemon
-rm setup_14.x
+rm setup_18.x
 
 # apt upate  # alerady done in apt-get install -y nodejs
 apt install byobu -y > /dev/null 2>&1

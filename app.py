@@ -4,18 +4,19 @@ and https://github.com/PromtEngineer/localGPT/blob/main/ingest.py
 
 https://python.langchain.com/en/latest/getting_started/tutorials.html
 """
-# pylint: disable=broad-exception-caught, unused-import
+# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long
 import os
 import time
 from pathlib import Path
-
-# import click
-# from typing import List
+from types import SimpleNamespace
 
 import gradio as gr
 from charset_normalizer import detect
+from chromadb.config import Settings
 from langchain.chains import RetrievalQA
 from langchain.docstore.document import Document
+
+# Docx2txtLoader
 from langchain.document_loaders import CSVLoader, PDFMinerLoader, TextLoader
 
 # from constants import CHROMA_SETTINGS, SOURCE_DIRECTORY, PERSIST_DIRECTORY
@@ -25,12 +26,16 @@ from langchain.text_splitter import (
     CharacterTextSplitter,
     RecursiveCharacterTextSplitter,
 )
+
 # FAISS instead of PineCone
 from langchain.vectorstores import FAISS, Chroma
 from loguru import logger
 from PyPDF2 import PdfReader  # localgpt
-from chromadb.config import Settings
-from transformers import LlamaTokenizer, LlamaForCausalLM, pipeline
+from transformers import LlamaForCausalLM, LlamaTokenizer, pipeline
+
+# import click
+# from typing import List
+
 
 # from utils import xlxs_to_csv
 
@@ -52,12 +57,14 @@ PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/db"
 
 # Define the Chroma settings
 CHROMA_SETTINGS = Settings(
-        chroma_db_impl='duckdb+parquet',
-        persist_directory=PERSIST_DIRECTORY,
-        anonymized_telemetry=False
+    chroma_db_impl="duckdb+parquet",
+    persist_directory=PERSIST_DIRECTORY,
+    anonymized_telemetry=False,
 )
+ns = SimpleNamespace(qa=None)
 
-def load_single_document(file_path: str|Path) -> Document:
+
+def load_single_document(file_path: str | Path) -> Document:
     """ingest.py"""
     # Loads a single document from a file path
     # encoding = detect(open(file_path, "rb").read()).get("encoding", "utf-8")
@@ -68,13 +75,13 @@ def load_single_document(file_path: str|Path) -> Document:
                 f" {file_path}'s encoding is None "
                 "Something is fishy, return empty str "
             )
-            return Document(page_content='', metadata={'source': file_path})
+            return Document(page_content="", metadata={"source": file_path})
 
         try:
             loader = TextLoader(file_path, encoding=encoding)
         except Exception as exc:
             logger.warning(f" {exc}, return dummy ")
-            return Document(page_content='', metadata={'source': file_path})
+            return Document(page_content="", metadata={"source": file_path})
 
     elif file_path.endswith(".pdf"):
         loader = PDFMinerLoader(file_path)
@@ -93,7 +100,7 @@ def load_single_document(file_path: str|Path) -> Document:
             loader = TextLoader(file_path)
         except Exception as exc:
             logger.error(f" {exc}, returnning empty string")
-            return Document(page_content='', metadata={'source': file_path})
+            return Document(page_content="", metadata={"source": file_path})
 
     return loader.load()[0]
 
@@ -150,6 +157,10 @@ def upload_files(files):
     logger.info(file_paths)
 
     res = ingest(file_paths)
+    logger.info("Processed:\n{res}")
+    del res
+
+    ns.qa = load_qa()
 
     # return [str(elm) for elm in res]
     return file_paths
@@ -157,16 +168,25 @@ def upload_files(files):
     # return ingest(file_paths)
 
 
-def ingest(file_paths: list[str | Path], model_name="hkunlp/instructor-base", device_type="cpu"):
+def ingest(
+    file_paths: list[str | Path], model_name="hkunlp/instructor-base", device_type="cpu"
+):
     """Gen Chroma db.
-    file_paths = ['C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\41b53dd5f203b423f2dced44eaf56e72508b7bbe\\app.py', 'C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\9390755bb391abc530e71a3946a7b50d463ba0ef\\README.md', 'C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\3341f9a410a60ffa57bf4342f3018a3de689f729\\requirements.txt']
+
+    torch.cuda.is_available()
+
+    file_paths =
+    ['C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\41b53dd5f203b423f2dced44eaf56e72508b7bbe\\app.py',
+    'C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\9390755bb391abc530e71a3946a7b50d463ba0ef\\README.md',
+    'C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\3341f9a410a60ffa57bf4342f3018a3de689f729\\requirements.txt']
     """
-    if device_type in ['cpu', 'CPU']:
-        device='cpu'
-    elif device_type in ['mps', 'MPS']:
-        device='mps'
+    logger.info("Doing ingest...")
+    if device_type in ["cpu", "CPU"]:
+        device = "cpu"
+    elif device_type in ["mps", "MPS"]:
+        device = "mps"
     else:
-        device='cuda'
+        device = "cuda"
 
     #  Load documents and split in chunks
     # logger.info(f"Loading documents from {SOURCE_DIRECTORY}")
@@ -184,24 +204,32 @@ def ingest(file_paths: list[str | Path], model_name="hkunlp/instructor-base", de
 
     # Create embeddings
     embeddings = HuggingFaceInstructEmbeddings(
-        model_name=model_name,
-        model_kwargs={"device": device}
+        model_name=model_name, model_kwargs={"device": device}
     )
 
     db = Chroma.from_documents(
-        texts, embeddings,
+        texts,
+        embeddings,
         persist_directory=PERSIST_DIRECTORY,
-        client_settings=CHROMA_SETTINGS
+        client_settings=CHROMA_SETTINGS,
     )
     db.persist()
     db = None
     logger.info("Done ingest")
 
-    return [[Path(doc.metadata.get("source")).name, len(doc.page_content)] for doc in documents]
+    return [
+        [Path(doc.metadata.get("source")).name, len(doc.page_content)]
+        for doc in documents
+    ]
 
 
+# TheBloke/vicuna-7B-1.1-GPTQ-4bit-128g
 def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
-    """Gen a local llm."""
+    """Gen a local llm.
+
+    localgpt run_localgpt
+    """
+    tokenizer = LlamaTokenizer.from_pretrained(model_id)
     model = LlamaForCausalLM.from_pretrained(
         model_id,
         # load_in_8bit=True, # set these options if your GPU supports them!
@@ -217,11 +245,40 @@ def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
         max_length=2048,
         temperature=0,
         top_p=0.95,
-        repetition_penalty=1.15
+        repetition_penalty=1.15,
     )
 
     local_llm = HuggingFacePipeline(pipeline=pipe)
     return local_llm
+
+
+def load_qa(device: str = "cpu", model_name: str = "hkunlp/instructor-base"):
+    """Gen qa."""
+    logger.info("Doing qa")
+    # device = 'cpu'
+    # model_name = "hkunlp/instructor-xl"
+    # model_name = "hkunlp/instructor-large"
+    # model_name = "hkunlp/instructor-base"
+    embeddings = HuggingFaceInstructEmbeddings(
+        model_name=model_name, model_kwargs={"device": device}
+    )
+    # xl 4.96G, large 3.5G,
+    db = Chroma(
+        persist_directory=PERSIST_DIRECTORY,
+        embedding_function=embeddings,
+        client_settings=CHROMA_SETTINGS,
+    )
+    retriever = db.as_retriever()
+
+    llm = gen_local_llm()  # "TheBloke/vicuna-7B-1.1-HF" 12G?
+
+    qa = RetrievalQA.from_chain_type(
+        llm=llm, chain_type="stuff", retriever=retriever, return_source_documents=True
+    )
+
+    logger.info("Done qa")
+
+    return qa
 
 
 def main1():
@@ -241,21 +298,62 @@ def main():
     logger.info(f"openai_api_key (hf space SECRETS/env): {openai_api_key}")
 
     with gr.Blocks() as demo:
-        name = gr.Textbox(label="Name")
-        greet_btn = gr.Button("Submit")
-        output = gr.Textbox(label="Output Box")
-        greet_btn.click(fn=greet, inputs=name, outputs=output, api_name="greet")
+        # name = gr.Textbox(label="Name")
+        # greet_btn = gr.Button("Submit")
+        # output = gr.Textbox(label="Output Box")
+        # greet_btn.click(fn=greet, inputs=name, outputs=output, api_name="greet")
 
+        # Upload files and generate embeddings database
         file_output = gr.File()
         upload_button = gr.UploadButton(
             "Click to upload files",
             # file_types=["*.pdf", "*.epub", "*.docx"],
-            file_count="multiple"
+            file_count="multiple",
         )
         upload_button.upload(upload_files, upload_button, file_output)
+
+        # interactive chat
+        chatbot = gr.Chatbot()
+        msg = gr.Textbox()
+        clear = gr.Button("Clear")
+
+        def respond(message, chat_history):
+            # bot_message = random.choice(["How are you?", "I love you", "I'm very hungry"])
+            res = ns.qa(message)
+            answer, docs = res["result"], res["source_documents"]
+            bot_message = f"{answer} ({docs})"
+            chat_history.append((message, bot_message))
+            time.sleep(0.21)
+            return "", chat_history
+
+        msg.submit(respond, [msg, chatbot], [msg, chatbot])
+        clear.click(lambda: None, None, chatbot, queue=False)
 
     demo.launch()
 
 
 if __name__ == "__main__":
     main()
+
+_ = """
+run_localgpt
+device = 'cpu'
+model_name = "hkunlp/instructor-xl"
+model_name = "hkunlp/instructor-large"
+model_name = "hkunlp/instructor-base"
+embeddings = HuggingFaceInstructEmbeddings(
+    model_name=,
+    model_kwargs={"device": device}
+)
+# xl 4.96G, large 3.5G,
+db = Chroma(persist_directory=PERSIST_DIRECTORY, embedding_function=embeddings, client_settings=CHROMA_SETTINGS)
+retriever = db.as_retriever()
+
+llm = gen_local_llm()  # "TheBloke/vicuna-7B-1.1-HF" 12G?
+
+qa = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever, return_source_documents=True)
+
+query = 'a'
+res = qa(query)
+
+"""

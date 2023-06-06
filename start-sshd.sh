@@ -1,0 +1,4 @@
+apt update && apt-get install openssh-server -y
+/etc/init.d/ssh restart && mkdir -p ~/.ssh && echo ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOl+SiDFL1ZUh1QJ0454eYKtamkMCVs2hhuv3cWN1LU7 id_ed25519_colab > ~/.ssh/authorized_keys 
+echo ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCizaBJkWzdC/pvwFzBx8/fNWhvDDcSjp3B8pqgS7nF/+CXstK/k5vbN+PlZTupnOrOd0jQ7KdDUqsx/GFGTub8n1RDOF8nCHjvKScQii3M53i6OVH3m5+9eyhag5J8vLugnbbT57tUaVnFe7z0vomxsmVUfyXex3EZhW+zM1+kfGH9rvQxoh5OMiZLPqcyNRQHsJV8JDD2IRxHid0mMXcPFbws1CcjZiEWRLV4878KFt2vWwp+9xjwgSzcoKtFnxMrDKFfyKoEAYnyO7SrEVvm8T2rMpXCApDEMFnV0g2bUDu67iD1xAGHSvTgjEtSG3mLJGrnKBnzzO2ksCZf68/z GOLAY\User@golay >> ~/.ssh/authorized_keys
+echo cd /usr/src/app >> ~/.bashrc
