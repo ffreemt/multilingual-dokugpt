@@ -14,20 +14,23 @@ from pathlib import Path
 
 import gradio as gr
 from charset_normalizer import detect
+from langchain.chains import RetrievalQA
 from langchain.docstore.document import Document
 from langchain.document_loaders import CSVLoader, PDFMinerLoader, TextLoader
 
 # from constants import CHROMA_SETTINGS, SOURCE_DIRECTORY, PERSIST_DIRECTORY
 from langchain.embeddings import HuggingFaceInstructEmbeddings
+from langchain.llms import HuggingFacePipeline
 from langchain.text_splitter import (
     CharacterTextSplitter,
     RecursiveCharacterTextSplitter,
 )
-from langchain.vectorstores import FAISS  # FAISS instead of PineCone
-from langchain.vectorstores import Chroma
+# FAISS instead of PineCone
+from langchain.vectorstores import FAISS, Chroma
 from loguru import logger
 from PyPDF2 import PdfReader  # localgpt
 from chromadb.config import Settings
+from transformers import LlamaTokenizer, LlamaForCausalLM, pipeline
 
 # from utils import xlxs_to_csv
 
@@ -147,7 +150,7 @@ def upload_files(files):
     logger.info(file_paths)
 
     res = ingest(file_paths)
-    
+
     # return [str(elm) for elm in res]
     return file_paths
 
@@ -197,6 +200,30 @@ def ingest(file_paths: list[str | Path], model_name="hkunlp/instructor-base", de
     return [[Path(doc.metadata.get("source")).name, len(doc.page_content)] for doc in documents]
 
 
+def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
+    """Gen a local llm."""
+    model = LlamaForCausalLM.from_pretrained(
+        model_id,
+        # load_in_8bit=True, # set these options if your GPU supports them!
+        # device_map=1#'auto',
+        # torch_dtype=torch.float16,
+        # low_cpu_mem_usage=True
+    )
+
+    pipe = pipeline(
+        "text-generation",
+        model=model,
+        tokenizer=tokenizer,
+        max_length=2048,
+        temperature=0,
+        top_p=0.95,
+        repetition_penalty=1.15
+    )
+
+    local_llm = HuggingFacePipeline(pipeline=pipe)
+    return local_llm
+
+
 def main1():
     """Lump codes"""
     with gr.Blocks() as demo:
@@ -208,6 +235,11 @@ def main1():
 
 def main():
     """Do blocks."""
+    logger.info(f"ROOT_DIRECTORY: {ROOT_DIRECTORY}")
+
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    logger.info(f"openai_api_key (hf space SECRETS/env): {openai_api_key}")
+
     with gr.Blocks() as demo:
         name = gr.Textbox(label="Name")
         greet_btn = gr.Button("Submit")
