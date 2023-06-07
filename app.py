@@ -236,8 +236,7 @@ def ingest(
         for doc in documents
     ]
 
-
-# TheBloke/vicuna-7B-1.1-GPTQ-4bit-128g
+# https://huggingface.co/TheBloke/vicuna-7B-1.1-HF
 def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
     """Gen a local llm.
 
@@ -334,13 +333,19 @@ def main():
         def respond(message, chat_history):
             # bot_message = random.choice(["How are you?", "I love you", "I'm very hungry"])
             if ns.qa is None:  # no files processed yet
-                return "Provide some file(s) for processsing first.", chat_history
+                bot_message = "Provide some file(s) for processsing first."
+                chat_history.append((message, bot_message))
+                return "", chat_history
+            try:
+                res = ns.qa(message)
+                answer, docs = res["result"], res["source_documents"]
+                bot_message = f"{answer} ({docs})"
+            except Exception as exc:
+                logger.error(exc)
+                bot_message = f"{exc}"
 
-            res = ns.qa(message)
-            answer, docs = res["result"], res["source_documents"]
-            bot_message = f"{answer} ({docs})"
             chat_history.append((message, bot_message))
-            time.sleep(0.21)
+
             return "", chat_history
 
         msg.submit(respond, [msg, chatbot], [msg, chatbot])
