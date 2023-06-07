@@ -364,10 +364,23 @@ def main():
 
             def respond(message, chat_history):
                 # bot_message = random.choice(["How are you?", "I love you", "I'm very hungry"])
-                if ns.qa is None:  # no files processed yet
+                if ns.ingest_done is None:  # no files processed yet
                     bot_message = "Upload some file(s) for processing first."
                     chat_history.append((message, bot_message))
                     return "", chat_history
+
+                if not ns.ingest_done:  # embedding database not doen yet
+                    bot_message = (
+                        "Waiting for ingest (embedding) to finish, "
+                        "be patient... You can switch the 'Upload files' "
+                        "Tab to check"
+                    )
+                    chat_history.append((message, bot_message))
+                    return "", chat_history
+
+                if ns.qa is None:  # load qa one time
+                    logger.info("Loading qa, need to do just one time.")
+                    ns.qa = load_qa()
 
                 try:
                     res = ns.qa(message)
