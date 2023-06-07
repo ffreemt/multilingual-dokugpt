@@ -357,7 +357,7 @@ def main():
             # Upload files and generate embeddings database
             file_output = gr.File()
             upload_button = gr.UploadButton(
-                "Click to upload files (Hold ctrl and click to select multiple files)",
+                "Click to upload files",
                 # file_types=["*.pdf", "*.epub", "*.docx"],
                 file_count="multiple",
             )
