@@ -8,6 +8,7 @@ https://python.langchain.com/en/latest/getting_started/tutorials.html
 import os
 import time
 from pathlib import Path
+from textwrap import dedent
 from types import SimpleNamespace
 
 import gradio as gr
@@ -316,8 +317,16 @@ def main():
         # greet_btn = gr.Button("Submit")
         # output = gr.Textbox(label="Output Box")
         # greet_btn.click(fn=greet, inputs=name, outputs=output, api_name="greet")
+        with gr.Accordion("Info", open=False):
+            _ = """
+                Talk to your docs (.pdf, .docx, .epub, .txt .md). It
+                takes quite a while to ingest docs (10-30 min. depending
+                on net, RAM, CPU etc.).
+                """
+            gr.Markdown(dedent(_))
 
-        with gr.Accordion("Upload files", open=True):
+        # with gr.Accordion("Upload files", open=True):
+        with gr.Tab("Upload files"):
             # Upload files and generate embeddings database
             file_output = gr.File()
             upload_button = gr.UploadButton(
@@ -327,31 +336,32 @@ def main():
             )
             upload_button.upload(upload_files, upload_button, file_output)
 
-        # interactive chat
-        chatbot = gr.Chatbot()
-        msg = gr.Textbox()
-        clear = gr.Button("Clear")
+        with gr.Tab("Query docs"):
+            # interactive chat
+            chatbot = gr.Chatbot()
+            msg = gr.Textbox(label="Query")
+            clear = gr.Button("Clear")
 
-        def respond(message, chat_history):
-            # bot_message = random.choice(["How are you?", "I love you", "I'm very hungry"])
-            if ns.qa is None:  # no files processed yet
-                bot_message = "Provide some file(s) for processsing first."
+            def respond(message, chat_history):
+                # bot_message = random.choice(["How are you?", "I love you", "I'm very hungry"])
+                if ns.qa is None:  # no files processed yet
+                    bot_message = "Provide some file(s) for processsing first."
+                    chat_history.append((message, bot_message))
+                    return "", chat_history
+                try:
+                    res = ns.qa(message)
+                    answer, docs = res["result"], res["source_documents"]
+                    bot_message = f"{answer} ({docs})"
+                except Exception as exc:
+                    logger.error(exc)
+                    bot_message = f"bummer! {exc}"
+
                 chat_history.append((message, bot_message))
+
                 return "", chat_history
-            try:
-                res = ns.qa(message)
-                answer, docs = res["result"], res["source_documents"]
-                bot_message = f"{answer} ({docs})"
-            except Exception as exc:
-                logger.error(exc)
-                bot_message = f"bummer! {exc}"
 
-            chat_history.append((message, bot_message))
-
-            return "", chat_history
-
-        msg.submit(respond, [msg, chatbot], [msg, chatbot])
-        clear.click(lambda: None, None, chatbot, queue=False)
+            msg.submit(respond, [msg, chatbot], [msg, chatbot])
+            clear.click(lambda: None, None, chatbot, queue=False)
 
     try:
         from google import colab
