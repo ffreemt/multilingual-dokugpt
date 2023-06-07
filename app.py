@@ -66,7 +66,7 @@ CHROMA_SETTINGS = Settings(
     persist_directory=PERSIST_DIRECTORY,
     anonymized_telemetry=False,
 )
-ns = SimpleNamespace(qa=None, ingest_done=None)
+ns = SimpleNamespace(qa=None, ingest_done=None, files_info=None)
 
 
 def load_single_document(file_path: str | Path) -> Document:
@@ -178,7 +178,7 @@ def upload_files(files):
 
     # flag ns.qadone
     ns.ingest_done = True
-    del res
+    ns.files_info = res
 
     # ns.qa = load_qa()
 
@@ -257,13 +257,16 @@ def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
     localgpt run_localgpt
     """
     tokenizer = LlamaTokenizer.from_pretrained(model_id)
-    model = LlamaForCausalLM.from_pretrained(
-        model_id,
-        # load_in_8bit=True, # set these options if your GPU supports them!
-        # device_map=1#'auto',
-        # torch_dtype=torch.float16,
-        # low_cpu_mem_usage=True
-    )
+    if torch.cuda.is_available():
+        model = LlamaForCausalLM.from_pretrained(
+            model_id,
+            # load_in_8bit=True, # set these options if your GPU supports them!
+            # device_map=1#'auto',
+            # torch_dtype=torch.float16,
+            low_cpu_mem_usage=True
+        )
+    else:
+        model = LlamaForCausalLM.from_pretrained(model_id)
 
     pipe = pipeline(
         "text-generation",
@@ -342,6 +345,10 @@ def main():
                 other text docs). It
                 takes quite a while to ingest docs (10-30 min. depending
                 on net, RAM, CPU etc.).
+
+                Send empty query (hit Enter) to check embedding status and files info ([filename, numb of chars])
+
+                Homepage: https://huggingface.co/spaces/mikeee/localgpt
                 """
             gr.Markdown(dedent(_))
 
