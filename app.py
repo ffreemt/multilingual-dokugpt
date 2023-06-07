@@ -319,7 +319,9 @@ def main():
         # greet_btn.click(fn=greet, inputs=name, outputs=output, api_name="greet")
         with gr.Accordion("Info", open=False):
             _ = """
-                Talk to your docs (.pdf, .docx, .epub, .txt .md). It
+                # localgpt
+                Talk to your docs (.pdf, .docx, .epub, .txt .md and
+                other text docs). It
                 takes quite a while to ingest docs (10-30 min. depending
                 on net, RAM, CPU etc.).
                 """
@@ -330,7 +332,7 @@ def main():
             # Upload files and generate embeddings database
             file_output = gr.File()
             upload_button = gr.UploadButton(
-                "Click to upload files",
+                "Click to upload files (Hold ctrl and click to select multiple files)",
                 # file_types=["*.pdf", "*.epub", "*.docx"],
                 file_count="multiple",
             )
@@ -345,7 +347,7 @@ def main():
             def respond(message, chat_history):
                 # bot_message = random.choice(["How are you?", "I love you", "I'm very hungry"])
                 if ns.qa is None:  # no files processed yet
-                    bot_message = "Provide some file(s) for processsing first."
+                    bot_message = "Upload some file(s) for processing first."
                     chat_history.append((message, bot_message))
                     return "", chat_history
                 try:
