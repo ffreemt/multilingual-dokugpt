@@ -12,6 +12,7 @@ from textwrap import dedent
 from types import SimpleNamespace
 
 import gradio as gr
+import torch
 from charset_normalizer import detect
 from chromadb.config import Settings
 from epub2txt import epub2txt
@@ -65,7 +66,7 @@ CHROMA_SETTINGS = Settings(
     persist_directory=PERSIST_DIRECTORY,
     anonymized_telemetry=False,
 )
-ns = SimpleNamespace(qa=None)
+ns = SimpleNamespace(qa=None, ingest_done=None)
 
 
 def load_single_document(file_path: str | Path) -> Document:
@@ -171,11 +172,15 @@ def upload_files(files):
     file_paths = [file.name for file in files]
     logger.info(file_paths)
 
+    ns.ingest_done = False
     res = ingest(file_paths)
-    logger.info("Processed:\n{res}")
+    logger.info(f"Processed:\n{res}")
+
+    # flag ns.qadone
+    ns.ingest_done = True
     del res
 
-    ns.qa = load_qa()
+    # ns.qa = load_qa()
 
     # return [str(elm) for elm in res]
     return file_paths
@@ -184,7 +189,7 @@ def upload_files(files):
 
 
 def ingest(
-    file_paths: list[str | Path], model_name="hkunlp/instructor-base", device_type="cpu"
+    file_paths: list[str | Path], model_name="hkunlp/instructor-base", device_type=None
 ):
     """Gen Chroma db.
 
@@ -195,7 +200,14 @@ def ingest(
     'C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\9390755bb391abc530e71a3946a7b50d463ba0ef\\README.md',
     'C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\3341f9a410a60ffa57bf4342f3018a3de689f729\\requirements.txt']
     """
-    logger.info("Doing ingest...")
+    logger.info("\n\t Doing ingest...")
+
+    if device_type is None:
+        if torch.cuda.is_available():
+            device_type = "cuda"
+        else:
+            device_type = "cpu"
+
     if device_type in ["cpu", "CPU"]:
         device = "cpu"
     elif device_type in ["mps", "MPS"]:
@@ -267,9 +279,15 @@ def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
     return local_llm
 
 
-def load_qa(device: str = "cpu", model_name: str = "hkunlp/instructor-base"):
+def load_qa(device=None, model_name: str = "hkunlp/instructor-base"):
     """Gen qa."""
     logger.info("Doing qa")
+    if device is None:
+        if torch.cuda.is_available():
+            device = "cuda"
+        else:
+            device = "cpu"
+
     # device = 'cpu'
     # model_name = "hkunlp/instructor-xl"
     # model_name = "hkunlp/instructor-large"
@@ -310,7 +328,7 @@ def main():
     logger.info(f"ROOT_DIRECTORY: {ROOT_DIRECTORY}")
 
     openai_api_key = os.getenv("OPENAI_API_KEY")
-    logger.info(f"openai_api_key (hf space SECRETS/env): {openai_api_key}")
+    logger.info(f"openai_api_key (env var/hf space SECRETS): {openai_api_key}")
 
     with gr.Blocks(theme=gr.themes.Soft()) as demo:
         # name = gr.Textbox(label="Name")
@@ -350,6 +368,7 @@ def main():
                     bot_message = "Upload some file(s) for processing first."
                     chat_history.append((message, bot_message))
                     return "", chat_history
+
                 try:
                     res = ns.qa(message)
                     answer, docs = res["result"], res["source_documents"]
@@ -366,12 +385,11 @@ def main():
             clear.click(lambda: None, None, chatbot, queue=False)
 
     try:
-        from google import colab
+        from google import colab  # noqa
 
         share = True  # start share when in colab
     except Exception:
         share = False
-
     demo.launch(share=share)
 
 
