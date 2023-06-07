@@ -261,8 +261,8 @@ def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
         model = LlamaForCausalLM.from_pretrained(
             model_id,
             # load_in_8bit=True, # set these options if your GPU supports them!
-            # device_map=1#'auto',
-            # torch_dtype=torch.float16,
+            device_map="auto",
+            torch_dtype=torch.float16,
             low_cpu_mem_usage=True
         )
     else:
