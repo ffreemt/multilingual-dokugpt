@@ -4,7 +4,7 @@ and https://github.com/PromtEngineer/localGPT/blob/main/ingest.py
 
 https://python.langchain.com/en/latest/getting_started/tutorials.html
 """
-# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements
+# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements, import-outside-toplevel, no-name-in-module
 import os
 import time
 from pathlib import Path
@@ -236,6 +236,7 @@ def ingest(
         for doc in documents
     ]
 
+
 # https://huggingface.co/TheBloke/vicuna-7B-1.1-HF
 def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
     """Gen a local llm.
@@ -310,7 +311,7 @@ def main():
     openai_api_key = os.getenv("OPENAI_API_KEY")
     logger.info(f"openai_api_key (hf space SECRETS/env): {openai_api_key}")
 
-    with gr.Blocks() as demo:
+    with gr.Blocks(theme=gr.themes.Soft()) as demo:
         # name = gr.Textbox(label="Name")
         # greet_btn = gr.Button("Submit")
         # output = gr.Textbox(label="Output Box")
@@ -352,7 +353,14 @@ def main():
         msg.submit(respond, [msg, chatbot], [msg, chatbot])
         clear.click(lambda: None, None, chatbot, queue=False)
 
-    demo.launch()
+    try:
+        from google import colab
+
+        share = True  # start share when in colab
+    except Exception:
+        share = False
+
+    demo.launch(share=share)
 
 
 if __name__ == "__main__":
