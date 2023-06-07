@@ -316,14 +316,15 @@ def main():
         # output = gr.Textbox(label="Output Box")
         # greet_btn.click(fn=greet, inputs=name, outputs=output, api_name="greet")
 
-        # Upload files and generate embeddings database
-        file_output = gr.File()
-        upload_button = gr.UploadButton(
-            "Click to upload files",
-            # file_types=["*.pdf", "*.epub", "*.docx"],
-            file_count="multiple",
-        )
-        upload_button.upload(upload_files, upload_button, file_output)
+        with gr.Accordion("Upload files", open=True):
+            # Upload files and generate embeddings database
+            file_output = gr.File()
+            upload_button = gr.UploadButton(
+                "Click to upload files",
+                # file_types=["*.pdf", "*.epub", "*.docx"],
+                file_count="multiple",
+            )
+            upload_button.upload(upload_files, upload_button, file_output)
 
         # interactive chat
         chatbot = gr.Chatbot()
@@ -342,7 +343,7 @@ def main():
                 bot_message = f"{answer} ({docs})"
             except Exception as exc:
                 logger.error(exc)
-                bot_message = f"{exc}"
+                bot_message = f"bummer! {exc}"
 
             chat_history.append((message, bot_message))
 
