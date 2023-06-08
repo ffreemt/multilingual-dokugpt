@@ -3,6 +3,41 @@ https://huggingface.co/spaces/mikeee/docs-chat/blob/main/app.py
 and https://github.com/PromtEngineer/localGPT/blob/main/ingest.py
 
 https://python.langchain.com/en/latest/getting_started/tutorials.html
+
+unstructured: python-magic python-docx python-pptx
+from langchain.document_loaders import UnstructuredHTMLLoader
+
+docs = []
+# for doc in Path('docs').glob("*.pdf"):
+for doc in Path('docs').glob("*"):
+# for doc in Path('docs').glob("*.txt"):
+    docs.append(load_single_document(f"{doc}"))
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+texts = text_splitter.split_documents(docs)
+
+model_name = "hkunlp/instructor-base"
+embeddings = HuggingFaceInstructEmbeddings(
+    model_name=model_name, model_kwargs={"device": device}
+)
+
+# constitution.pdf 54344,   72 chunks Wall time: 3min 13s CPU times: total: 9min 4s @golay
+# test.txt 21286,           27 chunks, Wall time: 47 s CPU times: total: 2min 30s @golay
+# both                      99 chunks, Wall time: 5min 4s CPU times: total: 13min 31s
+# chunks = len / 800
+
+db = Chroma.from_documents(texts, embeddings)
+
+db = Chroma.from_documents(
+    texts,
+    embeddings,
+    persist_directory=PERSIST_DIRECTORY,
+    client_settings=CHROMA_SETTINGS,
+)
+db.persist()
+
+# 中国共产党章程.txt qa
+https://github.com/xanderma/Assistant-Attop/blob/master/Release/%E6%96%87%E5%AD%97%E7%89%88%E9%A2%98%E5%BA%93/31.%E4%B8%AD%E5%9B%BD%E5%85%B1%E4%BA%A7%E5%85%9A%E7%AB%A0%E7%A8%8B.txt
+
 """
 # pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements, import-outside-toplevel, no-name-in-module
 import os
@@ -125,7 +160,7 @@ def get_pdf_text(pdf_docs):
     """docs-chat."""
     text = ""
     for pdf in pdf_docs:
-        pdf_reader = PdfReader(pdf)
+        pdf_reader = PdfReader(f"{pdf}")  # taking care of Path
         for page in pdf_reader.pages:
             text += page.extract_text()
     return text
@@ -255,13 +290,19 @@ def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
     """Gen a local llm.
 
     localgpt run_localgpt
+
+    https://medium.com/pytorch/bettertransformer-out-of-the-box-performance-for-huggingface-transformers-3fbe27d50ab2
+    with torch.device(“cuda”):
+        model = AutoModelForCausalLM.from_pretrained(“gpt2-large”, torch_dtype=torch.float16)
+
+        model = BetterTransformer.transform(model)
     """
     tokenizer = LlamaTokenizer.from_pretrained(model_id)
     if torch.cuda.is_available():
         model = LlamaForCausalLM.from_pretrained(
             model_id,
             # load_in_8bit=True, # set these options if your GPU supports them!
-            device_map="auto",
+            # device_map=1  # "auto",
             torch_dtype=torch.float16,
             low_cpu_mem_usage=True
         )
@@ -437,4 +478,42 @@ qa = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retrieve
 query = 'a'
 res = qa(query)
 
+---
+https://www.linkedin.com/pulse/build-qa-bot-over-private-data-openai-langchain-leo-wang
+
+history = [】
+
+def user(user_message, history):
+    # Get response from QA chain
+    response = qa({"question": user_message, "chat_history": history})
+    # Append user message and response to chat history
+    history.append((user_message, response["answer"]))]
+
+---
+https://llamahub.ai/l/file-unstructured
+
+from pathlib import Path
+from llama_index import download_loader
+
+UnstructuredReader = download_loader("UnstructuredReader")
+
+loader = UnstructuredReader()
+documents = loader.load_data(file=Path('./10k_filing.html'))
+
+# --
+from pathlib import Path
+from llama_index import download_loader
+
+# SimpleDirectoryReader = download_loader("SimpleDirectoryReader")
+# FileNotFoundError: [Errno 2] No such file or directory
+
+documents = SimpleDirectoryReader('./data').load_data()
+
+loader = SimpleDirectoryReader('./data', file_extractor={
+  ".pdf": "UnstructuredReader",
+  ".html": "UnstructuredReader",
+  ".eml": "UnstructuredReader",
+  ".pptx": "PptxReader"
+})
+documents = loader.load_data()
 """
