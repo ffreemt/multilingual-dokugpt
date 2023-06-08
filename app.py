@@ -39,7 +39,7 @@ db.persist()
 https://github.com/xanderma/Assistant-Attop/blob/master/Release/%E6%96%87%E5%AD%97%E7%89%88%E9%A2%98%E5%BA%93/31.%E4%B8%AD%E5%9B%BD%E5%85%B1%E4%BA%A7%E5%85%9A%E7%AB%A0%E7%A8%8B.txt
 
 """
-# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements, import-outside-toplevel, no-name-in-module
+# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements, import-outside-toplevel, no-name-in-module, no-member
 import os
 import time
 from pathlib import Path
@@ -304,7 +304,7 @@ def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
             # load_in_8bit=True, # set these options if your GPU supports them!
             # device_map=1  # "auto",
             torch_dtype=torch.float16,
-            low_cpu_mem_usage=True
+            low_cpu_mem_usage=True,
         )
     else:
         model = LlamaForCausalLM.from_pretrained(model_id)
