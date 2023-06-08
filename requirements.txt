@@ -26,3 +26,4 @@ epub2txt
 docx2txt
 
 about-time
+openai

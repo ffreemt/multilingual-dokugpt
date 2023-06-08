@@ -38,6 +38,10 @@ db.persist()
 # 中国共产党章程.txt qa
 https://github.com/xanderma/Assistant-Attop/blob/master/Release/%E6%96%87%E5%AD%97%E7%89%88%E9%A2%98%E5%BA%93/31.%E4%B8%AD%E5%9B%BD%E5%85%B1%E4%BA%A7%E5%85%9A%E7%AB%A0%E7%A8%8B.txt
 
+colab CPU test.text constitution.pdf
+CPU times: user 1min 27s, sys: 8.09 s, total: 1min 35s
+Wall time: 1min 37s
+
 """
 # pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements, import-outside-toplevel, no-name-in-module, no-member
 import os
