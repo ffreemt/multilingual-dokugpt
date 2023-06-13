@@ -289,12 +289,12 @@ def ingest(
     ]
 
 
+# TheBloke/Wizard-Vicuna-7B-Uncensored-HF
 # https://huggingface.co/TheBloke/vicuna-7B-1.1-HF
 def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
     """Gen a local llm.
 
     localgpt run_localgpt
-
     https://medium.com/pytorch/bettertransformer-out-of-the-box-performance-for-huggingface-transformers-3fbe27d50ab2
     with torch.device(“cuda”):
         model = AutoModelForCausalLM.from_pretrained(“gpt2-large”, torch_dtype=torch.float16)
@@ -354,7 +354,9 @@ def load_qa(device=None, model_name: str = "hkunlp/instructor-base"):
     llm = gen_local_llm()  # "TheBloke/vicuna-7B-1.1-HF" 12G?
 
     qa = RetrievalQA.from_chain_type(
-        llm=llm, chain_type="stuff", retriever=retriever, return_source_documents=True
+        llm=llm, chain_type="stuff", 
+        retriever=retriever, 
+        return_source_documents=True,
     )
 
     logger.info("Done qa")

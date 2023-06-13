@@ -1,3 +1,6 @@
 .venv
 db
 dummy
+.ENV
+.env
+__pycache__
