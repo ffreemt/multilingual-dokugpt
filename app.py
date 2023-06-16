@@ -126,13 +126,17 @@ CHROMA_SETTINGS = Settings(
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 ns_initial = SimpleNamespace(
-    qa=None,
+    qa=None,  # in effect Chroma db
     ingest_done=None,
     files_info=None,
     files_uploaded=[],
     db_ready=None,
+    chunk_size=250,
+    chunk_overlap=250,
+    model_name=MODEL_NAME,
 )
 ns = deepcopy(ns_initial)
+
 
 def load_single_document(file_path: str | Path) -> List[Document]:
     """Loads a single document from a file path."""
@@ -295,11 +299,14 @@ def upload_files(files):
 
 def process_files(
     # file_paths,
-    progress=gr.Progress()
+    progress=gr.Progress(),
 ):
     """Process uploaded files."""
     if not ns.files_uploaded:
         return f"No files uploaded: {ns.files_uploaded}"
+
+    # wait for update before querying new ns.qa
+    ns.ingest_done = False
 
     logger.debug(f"{ns.files_uploaded}")
 
@@ -307,18 +314,17 @@ def process_files(
 
     # imgs = [None] * 24
     # for img in progress.tqdm(imgs, desc="Loading from list"):
-        # time.sleep(0.1)
+    # time.sleep(0.1)
 
-    imgs = [[None] * 8] * 3
-    for img_set in progress.tqdm(imgs, desc="Nested list"):
-        time.sleep(.2)
-        for img in progress.tqdm(img_set, desc="inner list"):
-            time.sleep(10.1)
+    # imgs = [[None] * 8] * 3
+    # for img_set in progress.tqdm(imgs, desc="Nested list"):
+    # time.sleep(.2)
+    # for img in progress.tqdm(img_set, desc="inner list"):
+    # time.sleep(10.1)
 
-    return f"done file(s): {ns.files_info}"
+    # return f"done file(s): {ns.files_info}"
     # return f"done file(s)"
 
-    _ = """
     documents = []
     for file_path in progress.tqdm(ns.files_uploaded, desc="Reading file(s)"):
         logger.debug(f"Doing {file_path}")
@@ -327,7 +333,35 @@ def process_files(
             logger.debug("Done reading files.")
         except Exception as exc:
             logger.error(f"{file_path}: {exc}")
-    # """
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=ns.chunk_size, chunk_overlap=ns.chunk_overlap
+    )
+    texts = text_splitter.split_documents(documents)
+
+    logger.info(f"Loaded {len(ns.files_uploaded)} files ")
+    logger.info(f"Loaded {len(documents)} documents ")
+    logger.info(f"Split into {len(texts)} chunks of text")
+
+    # initilize if necessary
+    if ns.qa is None:
+        embeddings = SentenceTransformerEmbeddings(
+            model_name=ns.model_name, model_kwargs={"device": DEVICE}
+        )
+
+        ns.qa = Chroma(
+            # persist_directory=PERSIST_DIRECTORY,
+            embedding_function=embeddings,
+            # client_settings=CHROMA_SETTINGS,
+        )
+
+    # for text in progress.tqdm(
+    for text in tqdm(
+        mit.chunked_even(texts, 101),
+        total=ceil(len(texts) / 101),
+        desc="Processing docs",
+    ):
+        ns.qa.add_documents(documents=text)
 
     ns.ingest_done = True
 
@@ -400,9 +434,7 @@ def ingest(
         # client_settings=CHROMA_SETTINGS,
     )
     # for text in progress.tqdm(
-    for text in tqdm(
-        mit.chunked_even(texts, 101), total=ceil(len(texts) / 101)
-    ):
+    for text in tqdm(mit.chunked_even(texts, 101), total=ceil(len(texts) / 101)):
         db.add_documents(documents=text)
 
     _ = """
@@ -632,10 +664,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             logger.info("Done loading qa, need to do just one time.")
         # """
         if ns.qa is None:
-            bot_message = (
-                "Looks like the bot is not ready. "
-                "Try again later..."
-            )
+            bot_message = "Looks like the bot is not ready. " "Try again later..."
             chat_history.append((message, bot_message))
             return "", chat_history
 
