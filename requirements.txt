@@ -27,3 +27,5 @@ docx2txt
 
 about-time
 openai
+more-itertools
+tqdm

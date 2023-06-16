@@ -1,8 +1,11 @@
-"""Refer to
-https://huggingface.co/spaces/mikeee/docs-chat/blob/main/app.py
+"""Refer to https://huggingface.co/spaces/mikeee/docs-chat/blob/main/app.py.
+
 and https://github.com/PromtEngineer/localGPT/blob/main/ingest.py
 
 https://python.langchain.com/en/latest/getting_started/tutorials.html
+
+gradio.Progress example:
+    https://colab.research.google.com/github/gradio-app/gradio/blob/main/demo/progress/run.ipynb#scrollTo=2.8891853944186117e%2B38
 
 unstructured: python-magic python-docx python-pptx
 from langchain.document_loaders import UnstructuredHTMLLoader
@@ -34,6 +37,7 @@ db = Chroma.from_documents(
     client_settings=CHROMA_SETTINGS,
 )
 db.persist()
+est. 1min/100 text1
 
 # 中国共产党章程.txt qa
 https://github.com/xanderma/Assistant-Attop/blob/master/Release/%E6%96%87%E5%AD%97%E7%89%88%E9%A2%98%E5%BA%93/31.%E4%B8%AD%E5%9B%BD%E5%85%B1%E4%BA%A7%E5%85%9A%E7%AB%A0%E7%A8%8B.txt
@@ -43,19 +47,28 @@ CPU times: user 1min 27s, sys: 8.09 s, total: 1min 35s
 Wall time: 1min 37s
 
 """
-# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements, import-outside-toplevel, no-name-in-module, no-member
+# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements, import-outside-toplevel, no-name-in-module, no-member, too-many-branches, unused-variable, too-many-arguments, global-statement
 import os
 import time
+from copy import deepcopy
+from math import ceil
 from pathlib import Path
+from tempfile import _TemporaryFileWrapper
 from textwrap import dedent
 from types import SimpleNamespace
+from typing import List
 
 import gradio as gr
+import more_itertools as mit
 import torch
+from about_time import about_time
 from charset_normalizer import detect
 from chromadb.config import Settings
-from epub2txt import epub2txt
-from langchain.chains import RetrievalQA
+
+# from langchain.embeddings import HuggingFaceInstructEmbeddings
+# from langchain.llms import HuggingFacePipeline
+# from epub2txt import epub2txt
+from langchain.chains import ConversationalRetrievalChain, RetrievalQA
 from langchain.docstore.document import Document
 from langchain.document_loaders import (
     CSVLoader,
@@ -63,30 +76,26 @@ from langchain.document_loaders import (
     PDFMinerLoader,
     TextLoader,
 )
-
-# from constants import CHROMA_SETTINGS, SOURCE_DIRECTORY, PERSIST_DIRECTORY
-from langchain.embeddings import HuggingFaceInstructEmbeddings
-from langchain.llms import HuggingFacePipeline
+from langchain.embeddings import (
+    HuggingFaceInstructEmbeddings,
+    SentenceTransformerEmbeddings,
+)
+from langchain.llms import HuggingFacePipeline, OpenAI
+from langchain.memory import ConversationBufferMemory
 from langchain.text_splitter import (
     CharacterTextSplitter,
     RecursiveCharacterTextSplitter,
 )
-
-# FAISS instead of PineCone
 from langchain.vectorstores import FAISS, Chroma
 from loguru import logger
-from PyPDF2 import PdfReader  # localgpt
+from PyPDF2 import PdfReader
+from tqdm import tqdm
 from transformers import LlamaForCausalLM, LlamaTokenizer, pipeline
 
-# import click
-# from typing import List
+from epub_loader import EpubLoader
+from load_api_key import load_api_key, pk_base, sk_base
 
-# from utils import xlxs_to_csv
-
-# load possible env such as OPENAI_API_KEY
-# from dotenv import load_dotenv
-
-# load_dotenv()load_dotenv()
+MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"  # 1.11G
 
 # fix timezone
 os.environ["TZ"] = "Asia/Shanghai"
@@ -95,6 +104,14 @@ try:
 except Exception:
     # Windows
     logger.warning("Windows, cant run time.tzset()")
+
+api_key = load_api_key()
+if api_key is not None:
+    os.environ.setdefault("OPENAI_API_KEY", api_key)
+    if api_key.startswith("sk-"):
+        os.environ.setdefault("OPENAI_API_BASE", sk_base)
+    elif api_key.startswith("pk-"):
+        os.environ.setdefault("OPENAI_API_BASE", pk_base)
 
 ROOT_DIRECTORY = Path(__file__).parent
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/db"
@@ -105,59 +122,82 @@ CHROMA_SETTINGS = Settings(
     persist_directory=PERSIST_DIRECTORY,
     anonymized_telemetry=False,
 )
-ns = SimpleNamespace(qa=None, ingest_done=None, files_info=None)
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-def load_single_document(file_path: str | Path) -> Document:
-    """ingest.py"""
-    # Loads a single document from a file path
-    # encoding = detect(open(file_path, "rb").read()).get("encoding", "utf-8")
-    encoding = detect(Path(file_path).read_bytes()).get("encoding", "utf-8")
-    if file_path.endswith(".txt"):
+ns_initial = SimpleNamespace(
+    qa=None,
+    ingest_done=None,
+    files_info=None,
+    files_uploaded=[],
+    db_ready=None,
+)
+ns = deepcopy(ns_initial)
+
+def load_single_document(file_path: str | Path) -> List[Document]:
+    """Loads a single document from a file path."""
+    try:
+        _ = Path(file_path).read_bytes()
+        encoding = detect(_).get("encoding")
+        if encoding is not None:
+            encoding = str(encoding)
+    except Exception as exc:
+        logger.error(f"{file_path}: {exc}")
+        encoding = None
+
+    file_path = Path(file_path).as_posix()
+
+    if Path(file_path).suffix in [".txt"]:
         if encoding is None:
             logger.warning(
                 f" {file_path}'s encoding is None "
                 "Something is fishy, return empty str "
             )
-            return Document(page_content="", metadata={"source": file_path})
-
+            return [Document(page_content="", metadata={"source": file_path})]
         try:
             loader = TextLoader(file_path, encoding=encoding)
         except Exception as exc:
             logger.warning(f" {exc}, return dummy ")
-            return Document(page_content="", metadata={"source": file_path})
-
-    elif file_path.endswith(".pdf"):
-        loader = PDFMinerLoader(file_path)
+            return [Document(page_content="", metadata={"source": file_path})]
+    elif Path(file_path).suffix in [".pdf"]:
+        try:
+            loader = PDFMinerLoader(file_path)
+        except Exception as exc:
+            logger.error(exc)
+            return [Document(page_content="", metadata={"source": file_path})]
     elif file_path.endswith(".csv"):
-        loader = CSVLoader(file_path)
+        try:
+            loader = CSVLoader(file_path)
+        except Exception as exc:
+            logger.error(exc)
+            return [Document(page_content="", metadata={"source": file_path})]
     elif Path(file_path).suffix in [".docx"]:
         try:
             loader = Docx2txtLoader(file_path)
         except Exception as exc:
             logger.error(f" {file_path} errors: {exc}")
-            return Document(page_content="", metadata={"source": file_path})
-    elif Path(file_path).suffix in [".epub"]:  # for epub? epub2txt unstructured
+            return [Document(page_content="", metadata={"source": file_path})]
+    elif Path(file_path).suffix in [".epub"]:
         try:
-            _ = epub2txt(file_path)
+            # _ = epub2txt(file_path)
+            loader = EpubLoader(file_path)
         except Exception as exc:
             logger.error(f" {file_path} errors: {exc}")
-            return Document(page_content="", metadata={"source": file_path})
-        return Document(page_content=_, metadata={"source": file_path})
+            return [Document(page_content="", metadata={"source": file_path})]
     else:
         if encoding is None:
             logger.warning(
                 f" {file_path}'s encoding is None "
                 "Likely binary files, return empty str "
             )
-            return Document(page_content="", metadata={"source": file_path})
+            return [Document(page_content="", metadata={"source": file_path})]
         try:
             loader = TextLoader(file_path)
         except Exception as exc:
             logger.error(f" {exc}, returnning empty string")
-            return Document(page_content="", metadata={"source": file_path})
+            return [Document(page_content="", metadata={"source": file_path})]
 
-    return loader.load()[0]
+    return loader.load()  # use extend when combining
 
 
 def get_pdf_text(pdf_docs):
@@ -170,25 +210,59 @@ def get_pdf_text(pdf_docs):
     return text
 
 
-def get_text_chunks(text):
+def get_text_chunks(text, chunk_size=1000):
     """docs-chat."""
     text_splitter = CharacterTextSplitter(
-        separator="\n", chunk_size=1000, chunk_overlap=200, length_function=len
+        separator="\n", chunk_size=chunk_size, chunk_overlap=200, length_function=len
     )
     chunks = text_splitter.split_text(text)
     return chunks
 
 
-def get_vectorstore(text_chunks):
-    """docs-chat."""
+def get_vectorstore(
+    text_chunks,
+    vectorstore=None,
+    persist=True,
+):
+    """Gne vectorstore."""
     # embeddings = OpenAIEmbeddings()
+    # for HuggingFaceInstructEmbeddings
     model_name = "hkunlp/instructor-xl"
     model_name = "hkunlp/instructor-large"
     model_name = "hkunlp/instructor-base"
+
+    # embeddings = HuggingFaceInstructEmbeddings(model_name=model_name)
+
+    model_name = MODEL_NAME
     logger.info(f"Loading {model_name}")
-    embeddings = HuggingFaceInstructEmbeddings(model_name=model_name)
+    embeddings = SentenceTransformerEmbeddings(model_name=model_name)
     logger.info(f"Done loading {model_name}")
 
+    if vectorstore is None:
+        vectorstore = "chroma"
+
+    if vectorstore.lower() in ["chroma"]:
+        logger.info(
+            "Doing vectorstore Chroma.from_texts(texts=text_chunks, embedding=embeddings)"
+        )
+        if persist:
+            vectorstore = Chroma.from_texts(
+                texts=text_chunks,
+                embedding=embeddings,
+                persist_directory=PERSIST_DIRECTORY,
+                client_settings=CHROMA_SETTINGS,
+            )
+        else:
+            vectorstore = Chroma.from_texts(texts=text_chunks, embedding=embeddings)
+
+        logger.info(
+            "Done vectorstore FAISS.from_texts(texts=text_chunks, embedding=embeddings)"
+        )
+
+        return vectorstore
+
+    # if vectorstore.lower() not in ['chroma']
+    # TODO handle other cases
     logger.info(
         "Doing vectorstore FAISS.from_texts(texts=text_chunks, embedding=embeddings)"
     )
@@ -211,15 +285,7 @@ def upload_files(files):
     file_paths = [file.name for file in files]
     logger.info(file_paths)
 
-    ns.ingest_done = False
-    res = ingest(file_paths)
-    logger.info(f"Processed:\n{res}")
-
-    # flag ns.qadone
-    ns.ingest_done = True
-    ns.files_info = res
-
-    # ns.qa = load_qa()
+    ns.files_uploaded = file_paths
 
     # return [str(elm) for elm in res]
     return file_paths
@@ -227,19 +293,63 @@ def upload_files(files):
     # return ingest(file_paths)
 
 
-def ingest(
-    file_paths: list[str | Path], model_name="hkunlp/instructor-base", device_type=None
+def process_files(
+    # file_paths,
+    progress=gr.Progress()
 ):
-    """Gen Chroma db.
+    """Process uploaded files."""
+    if not ns.files_uploaded:
+        return f"No files uploaded: {ns.files_uploaded}"
 
-    torch.cuda.is_available()
+    logger.debug(f"{ns.files_uploaded}")
 
-    file_paths =
-    ['C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\41b53dd5f203b423f2dced44eaf56e72508b7bbe\\app.py',
-    'C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\9390755bb391abc530e71a3946a7b50d463ba0ef\\README.md',
-    'C:\\Users\\User\\AppData\\Local\\Temp\\gradio\\3341f9a410a60ffa57bf4342f3018a3de689f729\\requirements.txt']
-    """
+    logger.info(f"ingest({ns.files_uploaded})...")
+
+    # imgs = [None] * 24
+    # for img in progress.tqdm(imgs, desc="Loading from list"):
+        # time.sleep(0.1)
+
+    imgs = [[None] * 8] * 3
+    for img_set in progress.tqdm(imgs, desc="Nested list"):
+        time.sleep(.2)
+        for img in progress.tqdm(img_set, desc="inner list"):
+            time.sleep(10.1)
+
+    return f"done file(s): {ns.files_info}"
+    # return f"done file(s)"
+
+    _ = """
+    documents = []
+    for file_path in progress.tqdm(ns.files_uploaded, desc="Reading file(s)"):
+        logger.debug(f"Doing {file_path}")
+        try:
+            documents.extend(load_single_document(f"{file_path}"))
+            logger.debug("Done reading files.")
+        except Exception as exc:
+            logger.error(f"{file_path}: {exc}")
+    # """
+
+    ns.ingest_done = True
+
+    # ns.qa = load_qa()
+
+    return f"done file(s): {ns.files_info}"
+
+
+# pylint disable=unused-argument
+def ingest(
+    file_paths: list[str | Path],
+    model_name: str = MODEL_NAME,
+    device_type=None,
+    chunk_size: int = 256,
+    chunk_overlap: int = 50,
+):
+    """Gen Chroma db."""
     logger.info("\n\t Doing ingest...")
+    logger.debug(f" file_paths: {file_paths}")
+    logger.debug(f"type of file_paths: {type(file_paths)}")
+
+    # raise SystemExit(0)
 
     if device_type is None:
         if torch.cuda.is_available():
@@ -260,33 +370,68 @@ def ingest(
 
     documents = []
     for file_path in file_paths:
-        documents.append(load_single_document(f"{file_path}"))
+        # documents.append(load_single_document(f"{file_path}"))
+        logger.debug(f"Doing {file_path}")
+        documents.extend(load_single_document(f"{file_path}"))
 
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
     texts = text_splitter.split_documents(documents)
 
+    logger.info(f"Loaded {len(file_paths)} files ")
     logger.info(f"Loaded {len(documents)} documents ")
     logger.info(f"Split into {len(texts)} chunks of text")
 
     # Create embeddings
-    embeddings = HuggingFaceInstructEmbeddings(
+    # embeddings = HuggingFaceInstructEmbeddings(
+    embeddings = SentenceTransformerEmbeddings(
         model_name=model_name, model_kwargs={"device": device}
     )
 
-    db = Chroma.from_documents(
-        texts,
-        embeddings,
-        persist_directory=PERSIST_DIRECTORY,
-        client_settings=CHROMA_SETTINGS,
+    # https://stackoverflow.com/questions/76048941/how-to-combine-two-chroma-databases
+    # db = Chroma(persist_directory=chroma_directory, embedding_function=embedding)
+    # db.add_documents(documents=texts1)
+
+    # mit.chunked_even(texts, 100)
+    db = Chroma(
+        # persist_directory=PERSIST_DIRECTORY,
+        embedding_function=embeddings,
+        # client_settings=CHROMA_SETTINGS,
     )
-    db.persist()
-    db = None
+    # for text in progress.tqdm(
+    for text in tqdm(
+        mit.chunked_even(texts, 101), total=ceil(len(texts) / 101)
+    ):
+        db.add_documents(documents=text)
+
+    _ = """
+    with about_time() as atime:  # type: ignore
+        db = Chroma.from_documents(
+            texts,
+            embeddings,
+            persist_directory=PERSIST_DIRECTORY,
+            client_settings=CHROMA_SETTINGS,
+        )
+    logger.info(f"Time spent: {atime.duration_human}")  # type: ignore
+    """
+
+    logger.info(f"persist_directory: {PERSIST_DIRECTORY}")
+
+    # db.persist()
+    # db = None
+    # ns.db = db
+    ns.qa = db
+
     logger.info("Done ingest")
 
-    return [
+    _ = [
         [Path(doc.metadata.get("source")).name, len(doc.page_content)]
         for doc in documents
     ]
+    ns.files_info = _
+
+    return _
 
 
 # TheBloke/Wizard-Vicuna-7B-Uncensored-HF
@@ -327,7 +472,7 @@ def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
     return local_llm
 
 
-def load_qa(device=None, model_name: str = "hkunlp/instructor-base"):
+def load_qa(device=None, model_name: str = MODEL_NAME):
     """Gen qa."""
     logger.info("Doing qa")
     if device is None:
@@ -340,10 +485,12 @@ def load_qa(device=None, model_name: str = "hkunlp/instructor-base"):
     # model_name = "hkunlp/instructor-xl"
     # model_name = "hkunlp/instructor-large"
     # model_name = "hkunlp/instructor-base"
-    embeddings = HuggingFaceInstructEmbeddings(
+    # embeddings = HuggingFaceInstructEmbeddings(
+    embeddings = SentenceTransformerEmbeddings(
         model_name=model_name, model_kwargs={"device": device}
     )
     # xl 4.96G, large 3.5G,
+
     db = Chroma(
         persist_directory=PERSIST_DIRECTORY,
         embedding_function=embeddings,
@@ -351,117 +498,175 @@ def load_qa(device=None, model_name: str = "hkunlp/instructor-base"):
     )
     retriever = db.as_retriever()
 
-    llm = gen_local_llm()  # "TheBloke/vicuna-7B-1.1-HF" 12G?
+    # _ = """
+    # llm = gen_local_llm()  # "TheBloke/vicuna-7B-1.1-HF" 12G?
 
+    llm = OpenAI(temperature=0, max_tokens=1024)  # type: ignore
     qa = RetrievalQA.from_chain_type(
-        llm=llm, chain_type="stuff", 
-        retriever=retriever, 
-        return_source_documents=True,
+        llm=llm,
+        chain_type="stuff",
+        retriever=retriever,
+        # return_source_documents=True,
+    )
+
+    # {"query": ..., "result": ..., "source_documents": ...}
+
+    return qa
+
+    # """
+
+    # pylint: disable=unreachable
+
+    # model = 'gpt-3.5-turbo', default text-davinci-003
+    # max_tokens: int = 256 max_retries: int = 6
+    # openai_api_key: Optional[str] = None,
+    # openai_api_base: Optional[str] = None,
+
+    # llm = OpenAI(temperature=0, max_tokens=0)
+    llm = OpenAI(temperature=0, max_tokens=1024)  # type: ignore
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+    conversation_chain = ConversationalRetrievalChain.from_llm(
+        llm=llm,
+        # retriever=vectorstore.as_retriever(),
+        retriever=db.as_retriever(),
+        memory=memory,
     )
 
     logger.info("Done qa")
 
-    return qa
+    return conversation_chain
+    # memory.clear()
+    # response = conversation_chain({'question': user_question})
+    # response['question'], response['answer']
 
 
 def main1():
-    """Lump codes"""
-    with gr.Blocks() as demo:
+    """Lump codes."""
+    with gr.Blocks() as demo1:
         iface = gr.Interface(fn=greet, inputs="text", outputs="text")
         iface.launch()
 
-    demo.launch()
+    demo1.launch()
 
 
-def main():
-    """Do blocks."""
-    logger.info(f"ROOT_DIRECTORY: {ROOT_DIRECTORY}")
+logger.info(f"ROOT_DIRECTORY: {ROOT_DIRECTORY}")
 
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    logger.info(f"openai_api_key (env var/hf space SECRETS): {openai_api_key}")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+logger.info(f"openai_api_key (env var/hf space SECRETS): {openai_api_key}")
 
-    with gr.Blocks(theme=gr.themes.Soft()) as demo:
-        # name = gr.Textbox(label="Name")
-        # greet_btn = gr.Button("Submit")
-        # output = gr.Textbox(label="Output Box")
-        # greet_btn.click(fn=greet, inputs=name, outputs=output, api_name="greet")
-        with gr.Accordion("Info", open=False):
-            _ = """
-                # localgpt
-                Talk to your docs (.pdf, .docx, .epub, .txt .md and
-                other text docs). It
-                takes quite a while to ingest docs (10-30 min. depending
-                on net, RAM, CPU etc.).
+with gr.Blocks(theme=gr.themes.Soft()) as demo:
+    # name = gr.Textbox(label="Name")
+    # greet_btn = gr.Button("Submit")
+    # output = gr.Textbox(label="Output Box")
+    # greet_btn.click(fn=greet, inputs=name, outputs=output, api_name="greet")
+    #
+    #  ### layout ###
+    with gr.Accordion("Info", open=False):
+        _ = """
+            # localgpt
+            Talk to your docs (.pdf, .docx, .epub, .txt .md and
+            other text docs). It
+            takes quite a while to ingest docs (10-30 min. depending
+            on net, RAM, CPU etc.).
 
-                Send empty query (hit Enter) to check embedding status and files info ([filename, numb of chars])
+            Send empty query (hit Enter) to check embedding status and files info ([filename, numb of chars])
 
-                Homepage: https://huggingface.co/spaces/mikeee/localgpt
-                """
-            gr.Markdown(dedent(_))
+            Homepage: https://huggingface.co/spaces/mikeee/localgpt
+            """
+        gr.Markdown(dedent(_))
 
-        # with gr.Accordion("Upload files", open=True):
-        with gr.Tab("Upload files"):
-            # Upload files and generate embeddings database
+    with gr.Tab("Upload files"):
+        # Upload files and generate embeddings database
+        with gr.Row():
             file_output = gr.File()
+            # file_output = gr.Text()
+            # file_output = gr.DataFrame()
             upload_button = gr.UploadButton(
-                "Click to upload files",
+                "Click to upload",
                 # file_types=["*.pdf", "*.epub", "*.docx"],
                 file_count="multiple",
             )
-            upload_button.upload(upload_files, upload_button, file_output)
+        with gr.Row():
+            text2 = gr.Textbox("Progress/Log")
+            process_btn = gr.Button("Click to process files")
+        reset_btn = gr.Button("Reset everything")
 
-        with gr.Tab("Query docs"):
-            # interactive chat
-            chatbot = gr.Chatbot()
-            msg = gr.Textbox(label="Query")
-            clear = gr.Button("Clear")
+    with gr.Tab("Query docs"):
+        # interactive chat
+        chatbot = gr.Chatbot()
+        msg = gr.Textbox(label="Query")
+        clear = gr.Button("Clear")
 
-            def respond(message, chat_history):
-                # bot_message = random.choice(["How are you?", "I love you", "I'm very hungry"])
-                if ns.ingest_done is None:  # no files processed yet
-                    bot_message = "Upload some file(s) for processing first."
-                    chat_history.append((message, bot_message))
-                    return "", chat_history
+    # actions
+    def reset_all():
+        """Reset ns."""
+        global ns
+        ns = deepcopy(ns_initial)
+        return f"reset done: ns={ns}"
 
-                if not ns.ingest_done:  # embedding database not doen yet
-                    bot_message = (
-                        "Waiting for ingest (embedding) to finish, "
-                        "be patient... You can switch the 'Upload files' "
-                        "Tab to check"
-                    )
-                    chat_history.append((message, bot_message))
-                    return "", chat_history
+    reset_btn.click(reset_all, [], text2)
 
-                if ns.qa is None:  # load qa one time
-                    logger.info("Loading qa, need to do just one time.")
-                    ns.qa = load_qa()
+    upload_button.upload(upload_files, upload_button, file_output)
+    process_btn.click(process_files, [], text2)
 
-                try:
-                    res = ns.qa(message)
-                    answer, docs = res["result"], res["source_documents"]
-                    bot_message = f"{answer} ({docs})"
-                except Exception as exc:
-                    logger.error(exc)
-                    bot_message = f"bummer! {exc}"
+    def respond(message, chat_history):
+        """Gen response."""
+        if ns.ingest_done is None:  # no files processed yet
+            bot_message = "Upload some file(s) for processing first."
+            chat_history.append((message, bot_message))
+            return "", chat_history
 
-                chat_history.append((message, bot_message))
+        if not ns.ingest_done:  # embedding database not doen yet
+            bot_message = (
+                "Waiting for ingest (embedding) to finish, "
+                "be patient... You can switch the 'Upload files' "
+                "Tab to check"
+            )
+            chat_history.append((message, bot_message))
+            return "", chat_history
 
-                return "", chat_history
+        _ = """
+        if ns.qa is None:  # load qa one time
+            logger.info("Loading qa, need to do just one time.")
+            ns.qa = load_qa()
+            logger.info("Done loading qa, need to do just one time.")
+        # """
+        if ns.qa is None:
+            bot_message = (
+                "Looks like the bot is not ready. "
+                "Try again later..."
+            )
+            chat_history.append((message, bot_message))
+            return "", chat_history
 
-            msg.submit(respond, [msg, chatbot], [msg, chatbot])
-            clear.click(lambda: None, None, chatbot, queue=False)
+        try:
+            res = ns.qa(message)
+            answer = res.get("result")
+            docs = res.get("source_documents")
+            if docs:
+                bot_message = f"{answer}\n({docs})"
+            else:
+                bot_message = f"{answer}"
+        except Exception as exc:
+            logger.error(exc)
+            bot_message = f"bummer! {exc}"
 
+        chat_history.append((message, bot_message))
+
+        return "", chat_history
+
+    msg.submit(respond, [msg, chatbot], [msg, chatbot])
+    clear.click(lambda: None, None, chatbot, queue=False)
+
+if __name__ == "__main__":
+    # main()
     try:
-        from google import colab  # noqa
+        from google import colab  # noqa  # type: ignore
 
         share = True  # start share when in colab
     except Exception:
         share = False
-    demo.launch(share=share)
-
-
-if __name__ == "__main__":
-    main()
+    demo.queue(concurrency_count=20).launch(share=share)
 
 _ = """
 run_localgpt

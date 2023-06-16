@@ -4,3 +4,6 @@ dummy
 .ENV
 .env
 __pycache__
+.yarn
+.chroma
+.pnp.cjs

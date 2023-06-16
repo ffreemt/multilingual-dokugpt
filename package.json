@@ -1,0 +1,20 @@
+{
+  "name": "localgpt",
+  "scripts": {
+    "start": "nodemon -w app.py -x run-s check run:app",
+    "run:app": "python app.py",
+    "run:app-w": "nodemon -w app.py -x python app.py",
+    "check-w": "nodemon -w app.py -x run-s isort format flake8 docstyle lint type:check",
+    "check": "run-s isort format flake8 docstyle lint type:check",
+    "isort": "isort --profile=black app.py",
+    "format": "black app.py",
+    "flake8": "flake8 --exit-zero app.py",
+    "docstyle": "pydocstyle --convention=google app.py",
+    "lint": "pylint app.py --disable=fixme",
+    "type:check": "pyright app.py"
+  },
+  "packageManager": "yarn@3.5.0",
+  "devDependencies": {
+    "run-all": "^1.0.1"
+  }
+}
