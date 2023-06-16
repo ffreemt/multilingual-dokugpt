@@ -355,15 +355,22 @@ def process_files(
             # client_settings=CHROMA_SETTINGS,
         )
 
+    total = ceil(len(texts) / 101)
     # for text in progress.tqdm(
-    for text in progress.tqdm(
+    for idx, text in enumerate(progress.tqdm(
         mit.chunked_even(texts, 101),
-        total=ceil(len(texts) / 101),
+        total=total,
         desc="Processing docs",
-    ):
+    )):
+        logger.debug(f"{idx + 1} of {total}")
         ns.qa.add_documents(documents=text)
 
     ns.ingest_done = True
+    _ = [
+        [Path(doc.metadata.get("source")).name, len(doc.page_content)]
+        for doc in documents
+    ]
+    ns.files_info = _
 
     # ns.qa = load_qa()
 
