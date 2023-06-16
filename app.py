@@ -356,7 +356,7 @@ def process_files(
         )
 
     # for text in progress.tqdm(
-    for text in tqdm(
+    for text in progress.tqdm(
         mit.chunked_even(texts, 101),
         total=ceil(len(texts) / 101),
         desc="Processing docs",
@@ -664,7 +664,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             logger.info("Done loading qa, need to do just one time.")
         # """
         if ns.qa is None:
-            bot_message = "Looks like the bot is not ready. " "Try again later..."
+            bot_message = "Looks like the bot is not ready. Try again later..."
             chat_history.append((message, bot_message))
             return "", chat_history
 
