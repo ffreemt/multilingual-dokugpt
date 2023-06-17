@@ -19,7 +19,7 @@ text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=20
 texts = text_splitter.split_documents(docs)
 
 model_name = "hkunlp/instructor-base"
-embeddings = HuggingFaceInstructEmbeddings(
+embedding = HuggingFaceInstructEmbeddings(
     model_name=model_name, model_kwargs={"device": device}
 )
 
@@ -28,11 +28,11 @@ embeddings = HuggingFaceInstructEmbeddings(
 # both                      99 chunks, Wall time: 5min 4s CPU times: total: 13min 31s
 # chunks = len / 800
 
-db = Chroma.from_documents(texts, embeddings)
+db = Chroma.from_documents(texts, embedding)
 
 db = Chroma.from_documents(
     texts,
-    embeddings,
+    embedding,
     persist_directory=PERSIST_DIRECTORY,
     client_settings=CHROMA_SETTINGS,
 )
@@ -126,7 +126,8 @@ CHROMA_SETTINGS = Settings(
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 ns_initial = SimpleNamespace(
-    qa=None,  # in effect Chroma db
+    db=None,
+    qa=None,
     ingest_done=None,
     files_info=None,
     files_uploaded=[],
@@ -229,17 +230,17 @@ def get_vectorstore(
     persist=True,
 ):
     """Gne vectorstore."""
-    # embeddings = OpenAIEmbeddings()
+    # embedding = OpenAIEmbeddings()
     # for HuggingFaceInstructEmbeddings
     model_name = "hkunlp/instructor-xl"
     model_name = "hkunlp/instructor-large"
     model_name = "hkunlp/instructor-base"
 
-    # embeddings = HuggingFaceInstructEmbeddings(model_name=model_name)
+    # embedding = HuggingFaceInstructEmbeddings(model_name=model_name)
 
     model_name = MODEL_NAME
     logger.info(f"Loading {model_name}")
-    embeddings = SentenceTransformerEmbeddings(model_name=model_name)
+    embedding = SentenceTransformerEmbeddings(model_name=model_name)
     logger.info(f"Done loading {model_name}")
 
     if vectorstore is None:
@@ -247,20 +248,20 @@ def get_vectorstore(
 
     if vectorstore.lower() in ["chroma"]:
         logger.info(
-            "Doing vectorstore Chroma.from_texts(texts=text_chunks, embedding=embeddings)"
+            "Doing vectorstore Chroma.from_texts(texts=text_chunks, embedding=embedding)"
         )
         if persist:
             vectorstore = Chroma.from_texts(
                 texts=text_chunks,
-                embedding=embeddings,
+                embedding=embedding,
                 persist_directory=PERSIST_DIRECTORY,
                 client_settings=CHROMA_SETTINGS,
             )
         else:
-            vectorstore = Chroma.from_texts(texts=text_chunks, embedding=embeddings)
+            vectorstore = Chroma.from_texts(texts=text_chunks, embedding=embedding)
 
         logger.info(
-            "Done vectorstore FAISS.from_texts(texts=text_chunks, embedding=embeddings)"
+            "Done vectorstore FAISS.from_texts(texts=text_chunks, embedding=embedding)"
         )
 
         return vectorstore
@@ -268,11 +269,11 @@ def get_vectorstore(
     # if vectorstore.lower() not in ['chroma']
     # TODO handle other cases
     logger.info(
-        "Doing vectorstore FAISS.from_texts(texts=text_chunks, embedding=embeddings)"
+        "Doing vectorstore FAISS.from_texts(texts=text_chunks, embedding=embedding)"
     )
-    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embeddings)
+    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embedding)
     logger.info(
-        "Done vectorstore FAISS.from_texts(texts=text_chunks, embedding=embeddings)"
+        "Done vectorstore FAISS.from_texts(texts=text_chunks, embedding=embedding)"
     )
 
     return vectorstore
@@ -308,9 +309,7 @@ def process_files(
     # wait for update before querying new ns.qa
     ns.ingest_done = False
 
-    logger.debug(f"{ns.files_uploaded}")
-
-    logger.info(f"ingest({ns.files_uploaded})...")
+    logger.debug(f"ns.files_uploaded: {ns.files_uploaded}")
 
     # imgs = [None] * 24
     # for img in progress.tqdm(imgs, desc="Loading from list"):
@@ -322,17 +321,25 @@ def process_files(
     # for img in progress.tqdm(img_set, desc="inner list"):
     # time.sleep(10.1)
 
-    # return f"done file(s): {ns.files_info}"
-    # return f"done file(s)"
+    # return "done..."
 
     documents = []
-    for file_path in progress.tqdm(ns.files_uploaded, desc="Reading file(s)"):
-        logger.debug(f"Doing {file_path}")
-        try:
-            documents.extend(load_single_document(f"{file_path}"))
-            logger.debug("Done reading files.")
-        except Exception as exc:
-            logger.error(f"{file_path}: {exc}")
+    if progress is None:
+        for file_path in ns.files_uploaded:
+            logger.debug(f"-Doing {file_path}")
+            try:
+                documents.extend(load_single_document(f"{file_path}"))
+                logger.debug("-Done reading files.")
+            except Exception as exc:
+                logger.error(f"-{file_path}: {exc}")
+    else:
+        for file_path in progress.tqdm(ns.files_uploaded, desc="Reading file(s)"):
+            logger.debug(f"Doing {file_path}")
+            try:
+                documents.extend(load_single_document(f"{file_path}"))
+                logger.debug("Done reading files.")
+            except Exception as exc:
+                logger.error(f"{file_path}: {exc}")
 
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=ns.chunk_size, chunk_overlap=ns.chunk_overlap
@@ -340,30 +347,52 @@ def process_files(
     texts = text_splitter.split_documents(documents)
 
     logger.info(f"Loaded {len(ns.files_uploaded)} files ")
-    logger.info(f"Loaded {len(documents)} documents ")
-    logger.info(f"Split into {len(texts)} chunks of text")
+    logger.info(f"Loaded {len(documents)} document(s) ")
+    logger.info(f"Split into {len(texts)} chunk(s) of text")
 
-    # initilize if necessary
-    if ns.qa is None:
-        embeddings = SentenceTransformerEmbeddings(
-            model_name=ns.model_name, model_kwargs={"device": DEVICE}
-        )
+    # initialize if necessary
+    if ns.db is None:
+        logger.info(f"loading {ns.model_name:}")
+        for _ in progress.tqdm(range(1), desc="diggin..."):
+            embedding = SentenceTransformerEmbeddings(
+                model_name=ns.model_name, model_kwargs={"device": DEVICE}
+            )
 
-        ns.qa = Chroma(
-            # persist_directory=PERSIST_DIRECTORY,
-            embedding_function=embeddings,
-            # client_settings=CHROMA_SETTINGS,
-        )
+            logger.info("creating vectorstore")
+            ns.db = Chroma(
+                # persist_directory=PERSIST_DIRECTORY,
+                embedding_function=embedding,
+                # client_settings=CHROMA_SETTINGS,
+            )
+        logger.info("done creating vectorstore")
 
     total = ceil(len(texts) / 101)
-    # for text in progress.tqdm(
-    for idx, text in enumerate(progress.tqdm(
-        mit.chunked_even(texts, 101),
-        total=total,
-        desc="Processing docs",
-    )):
-        logger.debug(f"{idx + 1} of {total}")
-        ns.qa.add_documents(documents=text)
+    if progress is None:
+        # for text in progress.tqdm(
+        for idx, text in enumerate(mit.chunked_even(texts, 101)):
+            logger.debug(f"-{idx + 1} of {total}")
+            ns.db.add_documents(documents=text)
+    else:
+        # for text in progress.tqdm(
+        for idx, text in enumerate(progress.tqdm(
+            mit.chunked_even(texts, 101),
+            total=total,
+            desc="Processing docs",
+        )):
+            logger.debug(f"{idx + 1} of {total}")
+            ns.db.add_documents(documents=text)
+    logger.debug(f" done all {total}")
+
+    # ns.qa = load_qa()
+
+    llm = OpenAI(temperature=0, max_tokens=1024)  # type: ignore
+    retriever = ns.db.as_retriever()
+    ns.qa = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=retriever,
+        # return_source_documents=True,
+    )
 
     ns.ingest_done = True
     _ = [
@@ -372,9 +401,55 @@ def process_files(
     ]
     ns.files_info = _
 
-    # ns.qa = load_qa()
+    logger.debug(f"{ns.ingest_done=}, exit process_files")
+    return f"done file(s): {dict(ns.files_info)}"
 
-    return f"done file(s): {ns.files_info}"
+
+def respond(message, chat_history):
+    """Gen response."""
+    logger.debug(f"{ns.files_uploaded=}")
+    if not ns.files_uploaded:  # no files processed yet
+        bot_message = "Upload some file(s) for processing first."
+        chat_history.append((message, bot_message))
+        return "", chat_history
+
+    logger.debug(f"{ns.ingest_done=}")
+    if not ns.ingest_done:  # embedding database not doen yet
+        bot_message = (
+            "Waiting for ingest (embedding) to finish, "
+            "be patient... You can switch the 'Upload files' "
+            "Tab to check"
+        )
+        chat_history.append((message, bot_message))
+        return "", chat_history
+
+    _ = """
+    if ns.qa is None:  # load qa one time
+        logger.info("Loading qa, need to do just one time.")
+        ns.qa = load_qa()
+        logger.info("Done loading qa, need to do just one time.")
+    # """
+    logger.debug(f"{ns.qa=}")
+    if ns.qa is None:
+        bot_message = "Looks like the bot is not ready. Try again later..."
+        chat_history.append((message, bot_message))
+        return "", chat_history
+
+    try:
+        res = ns.qa(message)
+        answer = res.get("result")
+        docs = res.get("source_documents")
+        if docs:
+            bot_message = f"{answer}\n({docs})"
+        else:
+            bot_message = f"{answer}"
+    except Exception as exc:
+        logger.error(exc)
+        bot_message = f"bummer! {exc}"
+
+    chat_history.append((message, bot_message))
+
+    return "", chat_history
 
 
 # pylint disable=unused-argument
@@ -424,9 +499,9 @@ def ingest(
     logger.info(f"Loaded {len(documents)} documents ")
     logger.info(f"Split into {len(texts)} chunks of text")
 
-    # Create embeddings
-    # embeddings = HuggingFaceInstructEmbeddings(
-    embeddings = SentenceTransformerEmbeddings(
+    # Create embedding
+    # embedding = HuggingFaceInstructEmbeddings(
+    embedding = SentenceTransformerEmbeddings(
         model_name=model_name, model_kwargs={"device": device}
     )
 
@@ -437,7 +512,7 @@ def ingest(
     # mit.chunked_even(texts, 100)
     db = Chroma(
         # persist_directory=PERSIST_DIRECTORY,
-        embedding_function=embeddings,
+        embedding_function=embedding,
         # client_settings=CHROMA_SETTINGS,
     )
     # for text in progress.tqdm(
@@ -448,7 +523,7 @@ def ingest(
     with about_time() as atime:  # type: ignore
         db = Chroma.from_documents(
             texts,
-            embeddings,
+            embedding,
             persist_directory=PERSIST_DIRECTORY,
             client_settings=CHROMA_SETTINGS,
         )
@@ -512,7 +587,14 @@ def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
 
 
 def load_qa(device=None, model_name: str = MODEL_NAME):
-    """Gen qa."""
+    """Gen qa.
+
+    device = 'cpu'
+    model_name = "hkunlp/instructor-xl"
+    model_name = "hkunlp/instructor-large"
+    model_name = "hkunlp/instructor-base"
+    embedding = HuggingFaceInstructEmbeddings(
+    """
     logger.info("Doing qa")
     if device is None:
         if torch.cuda.is_available():
@@ -520,19 +602,14 @@ def load_qa(device=None, model_name: str = MODEL_NAME):
         else:
             device = "cpu"
 
-    # device = 'cpu'
-    # model_name = "hkunlp/instructor-xl"
-    # model_name = "hkunlp/instructor-large"
-    # model_name = "hkunlp/instructor-base"
-    # embeddings = HuggingFaceInstructEmbeddings(
-    embeddings = SentenceTransformerEmbeddings(
+    embedding = SentenceTransformerEmbeddings(
         model_name=model_name, model_kwargs={"device": device}
     )
     # xl 4.96G, large 3.5G,
 
     db = Chroma(
         persist_directory=PERSIST_DIRECTORY,
-        embedding_function=embeddings,
+        embedding_function=embedding,
         client_settings=CHROMA_SETTINGS,
     )
     retriever = db.as_retriever()
@@ -552,8 +629,7 @@ def load_qa(device=None, model_name: str = MODEL_NAME):
 
     return qa
 
-    # """
-
+    # TODO: conversation_chain
     # pylint: disable=unreachable
 
     # model = 'gpt-3.5-turbo', default text-davinci-003
@@ -615,7 +691,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         gr.Markdown(dedent(_))
 
     with gr.Tab("Upload files"):
-        # Upload files and generate embeddings database
+        # Upload files and generate vectorstore
         with gr.Row():
             file_output = gr.File()
             # file_output = gr.Text()
@@ -626,9 +702,10 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
                 file_count="multiple",
             )
         with gr.Row():
-            text2 = gr.Textbox("Progress/Log")
-            process_btn = gr.Button("Click to process files")
-        reset_btn = gr.Button("Reset everything")
+            text2 = gr.Textbox("Gen embedding")
+            process_btn = gr.Button("Click to embed")
+
+        # reset_btn = gr.Button("Reset everything", visibile=False)
 
     with gr.Tab("Query docs"):
         # interactive chat
@@ -643,21 +720,24 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         ns = deepcopy(ns_initial)
         return f"reset done: ns={ns}"
 
-    reset_btn.click(reset_all, [], text2)
+    # reset_btn.click(reset_all, [], text2)
 
     upload_button.upload(upload_files, upload_button, file_output)
     process_btn.click(process_files, [], text2)
 
     def respond(message, chat_history):
         """Gen response."""
+        logger.info(f"{ns.ingest_done=}")
         if ns.ingest_done is None:  # no files processed yet
             bot_message = "Upload some file(s) for processing first."
             chat_history.append((message, bot_message))
             return "", chat_history
 
+        logger.info(f"{ns.ingest_done=}")
         if not ns.ingest_done:  # embedding database not doen yet
             bot_message = (
                 "Waiting for ingest (embedding) to finish, "
+                f"({ns.ingest_done=})"
                 "be patient... You can switch the 'Upload files' "
                 "Tab to check"
             )
@@ -695,13 +775,6 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     clear.click(lambda: None, None, chatbot, queue=False)
 
 if __name__ == "__main__":
-    # main()
-    try:
-        from google import colab  # noqa  # type: ignore
-
-        share = True  # start share when in colab
-    except Exception:
-        share = False
     demo.queue(concurrency_count=20).launch(share=share)
 
 _ = """
@@ -710,12 +783,12 @@ device = 'cpu'
 model_name = "hkunlp/instructor-xl"
 model_name = "hkunlp/instructor-large"
 model_name = "hkunlp/instructor-base"
-embeddings = HuggingFaceInstructEmbeddings(
+embedding = HuggingFaceInstructEmbeddings(
     model_name=,
     model_kwargs={"device": device}
 )
 # xl 4.96G, large 3.5G,
-db = Chroma(persist_directory=PERSIST_DIRECTORY, embedding_function=embeddings, client_settings=CHROMA_SETTINGS)
+db = Chroma(persist_directory=PERSIST_DIRECTORY, embedding_function=embedding, client_settings=CHROMA_SETTINGS)
 retriever = db.as_retriever()
 
 llm = gen_local_llm()  # "TheBloke/vicuna-7B-1.1-HF" 12G?

@@ -6,7 +6,9 @@ pdfminer.six==20221105
 InstructorEmbedding
 
 # required by sentence-transformers
---extra-index-url https://download.pytorch.org/whl/cpu
+# do not use the following in windows. it will cause
+# "Throws a silent error if function takes more than 5 seconds #3078" issue https://github.com/gradio-app/gradio/issues/3078
+# --extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchvision
 sentence-transformers
