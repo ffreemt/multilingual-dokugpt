@@ -373,8 +373,8 @@ def process_files(
 
     _ = (
         f"done file(s): {dict(ns.files_info)}, splitted to "
-        f"{total} chunks. \n\nThe following embedding takes "
-        f"step 0-{total - 1}. (Each step lasts about 18 secs "
+        f"{total} chunk(s). \n\nThe following embedding takes "
+        f" {total} step(s). (Each step lasts about 18 secs "
         " on a free tier instance on huggingface space.)"
     )
 

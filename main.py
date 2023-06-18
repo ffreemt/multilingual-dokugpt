@@ -1,10 +1,11 @@
 """Test."""
 # pylint: disable=invalid-name, unused-import, broad-except,
+import os
 from copy import deepcopy
-
 from textwrap import dedent
 
 import gradio as gr
+import httpx
 from loguru import logger
 
 from app import (
@@ -17,6 +18,27 @@ from app import (
     upload_files,
 )
 from load_api_key import load_api_key, pk_base, sk_base
+
+api_key = load_api_key()
+if api_key is not None:
+    os.environ.setdefault("OPENAI_API_KEY", api_key)
+    if api_key.startswith("sk-"):
+        os.environ.setdefault("OPENAI_API_BASE", sk_base)
+    elif api_key.startswith("pk-"):
+        os.environ.setdefault("OPENAI_API_BASE", pk_base)
+        # resetip
+        try:
+            url = "https://api.pawan.krd/resetip"
+            headers = {"Authorization": f"{api_key}"}
+            httpx.post(url, headers=headers)
+        except Exception as exc_:
+            logger.error(exc_)
+            raise
+
+openai_api_key = os.getenv("OPENAI_API_KEY")
+openai_api_base = os.getenv("OPENAI_API_BASE")
+logger.info(f"openai_api_key (env var/hf space SECRETS): {openai_api_key}")
+logger.info(f"openai_api_base: {openai_api_base}")
 
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     with gr.Tab("Upload files"):  # Tab1
