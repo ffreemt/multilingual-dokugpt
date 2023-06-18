@@ -2,7 +2,7 @@
 name = "multilingual-dokugpt"
 version = "0.1.0"
 description = "Talk to multilingual documents in a language you prefer"
-authors = ["Your Name <you@example.com>"]
+authors = ["ffreeme"]
 license = "MIT"
 readme = "README1.md"
 packages = [{include = "multilingual_dokugpt"}]

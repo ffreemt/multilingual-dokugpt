@@ -13,7 +13,7 @@ Chat with multilingual documents in a language you prefer
 git clone https://github.com/ffreemt/multilingual-dokugpt
 cd multilingual-dokugpt
 ```
-* [Optional] Create a even
+* [Optional] Create a `venv`
 e.g.
 ```
 python -m venv .venv
