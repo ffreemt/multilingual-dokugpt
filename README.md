@@ -1,5 +1,5 @@
 ---
-title: localgpt
+title: multilingual-dokugpt
 emoji: 🦀
 colorFrom: green
 colorTo: red

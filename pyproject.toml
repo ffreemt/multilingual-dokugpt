@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "multilingual-dokugpt"
+version = "0.1.0"
+description = "Talk to multilingual documents in a language you prefer"
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+readme = "README1.md"
+packages = [{include = "multilingual_dokugpt"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
