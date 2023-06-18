@@ -22,7 +22,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     with gr.Tab("Upload files"):  # Tab1
         with gr.Accordion("Info", open=False):
             _ = """
-                # multilingual dokugpt/多语dokugpt
+                ### multilingual dokugpt/多语dokugpt
 
                 和你的文件对话： 可用中文向外语文件提问或用外语向中文文件提问
 
