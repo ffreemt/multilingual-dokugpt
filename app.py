@@ -432,7 +432,7 @@ def embed_files(progress=gr.Progress()):
     logger.debug(f"{ns.ingest_done=}, exit process_files")
 
     _ = (
-        f"Done {total} chunks. You can now "
+        f"Done {total} chunk(s). Now "
         "switch to Query Docs Tab to chat. "
         "You can chat in a language you prefer, "
         "independent of the document language. Have fun."
