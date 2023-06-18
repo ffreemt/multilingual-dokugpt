@@ -8,15 +8,8 @@ import gradio as gr
 import httpx
 from loguru import logger
 
-from app import (
-    embed_files,
-    ingest,
-    ns,
-    ns_initial,
-    process_files,
-    respond,
-    upload_files,
-)
+from app import (embed_files, ingest, ns, ns_initial, process_files, respond,
+                 upload_files)
 from load_api_key import load_api_key, pk_base, sk_base
 
 api_key = load_api_key()
@@ -57,7 +50,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 
                 Send empty query (hit Enter) to check embedding status and files info ([filename, numb of chars])
 
-                Homepage: https://huggingface.co/spaces/mikeee/localgpt
+                Homepage: https://huggingface.co/spaces/mikeee/multilingual-dokugpt
                 """
             gr.Markdown(dedent(_))
 
