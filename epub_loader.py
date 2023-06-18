@@ -1,4 +1,4 @@
-"""Loads an epub file into a list of documents."""
+"""Load an epub file into a list of documents."""
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Union
