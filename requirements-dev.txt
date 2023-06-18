@@ -1,2 +1,6 @@
 ipython
+isort
+black
+pydocstyle
+pyright
 pylint

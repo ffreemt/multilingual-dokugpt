@@ -47,21 +47,24 @@ CPU times: user 1min 27s, sys: 8.09 s, total: 1min 35s
 Wall time: 1min 37s
 
 """
-# pylint: disable=broad-exception-caught, unused-import, invalid-name, line-too-long, too-many-return-statements, import-outside-toplevel, no-name-in-module, no-member, too-many-branches, unused-variable, too-many-arguments, global-statement
+# pylint: disable=broad-except, unused-import, invalid-name, line-too-long, too-many-return-statements, import-outside-toplevel, no-name-in-module, no-member, too-many-branches, unused-variable, too-many-arguments, global-statement
 import os
 import time
 from copy import deepcopy
 from math import ceil
 from pathlib import Path
-from tempfile import _TemporaryFileWrapper
+
+# from tempfile import _TemporaryFileWrapper
 from textwrap import dedent
 from types import SimpleNamespace
 from typing import List
 
 import gradio as gr
+import httpx
 import more_itertools as mit
 import torch
-from about_time import about_time
+
+# from about_time import about_time
 from charset_normalizer import detect
 from chromadb.config import Settings
 
@@ -77,9 +80,8 @@ from langchain.document_loaders import (
     TextLoader,
 )
 from langchain.embeddings import (
-    HuggingFaceInstructEmbeddings,
     SentenceTransformerEmbeddings,
-)
+)  # HuggingFaceInstructEmbeddings,
 from langchain.llms import HuggingFacePipeline, OpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.text_splitter import (
@@ -112,6 +114,14 @@ if api_key is not None:
         os.environ.setdefault("OPENAI_API_BASE", sk_base)
     elif api_key.startswith("pk-"):
         os.environ.setdefault("OPENAI_API_BASE", pk_base)
+        # resetip
+        try:
+            url = "https://api.pawan.krd/resetip"
+            headers = {"Authorization": f"{api_key}"}
+            httpx.post(url, headers=headers)
+        except Exception as exc_:
+            logger.error(exc_)
+            raise
 
 ROOT_DIRECTORY = Path(__file__).parent
 PERSIST_DIRECTORY = f"{ROOT_DIRECTORY}/db"
@@ -128,6 +138,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 ns_initial = SimpleNamespace(
     db=None,
     qa=None,
+    texts=[],
     ingest_done=None,
     files_info=None,
     files_uploaded=[],
@@ -140,7 +151,7 @@ ns = deepcopy(ns_initial)
 
 
 def load_single_document(file_path: str | Path) -> List[Document]:
-    """Loads a single document from a file path."""
+    """Load a single document from a file path."""
     try:
         _ = Path(file_path).read_bytes()
         encoding = detect(_).get("encoding")
@@ -350,6 +361,28 @@ def process_files(
     logger.info(f"Loaded {len(documents)} document(s) ")
     logger.info(f"Split into {len(texts)} chunk(s) of text")
 
+    total = ceil(len(texts) / 101)
+    ns.texts = texts
+
+    ns.ingest_done = True
+    _ = [
+        [Path(doc.metadata.get("source")).name, len(doc.page_content)]
+        for doc in documents
+    ]
+    ns.files_info = _
+
+    _ = (
+        f"done file(s): {dict(ns.files_info)}, splitted to "
+        f"{total} chunks. \n\nThe following embedding takes "
+        f"step 0-{total - 1}. (Each step lasts about 18 secs "
+        " on a free tier instance on huggingface space.)"
+    )
+
+    return _
+
+
+def embed_files(progress=gr.Progress()):
+    """Embded ns.files_uploaded."""
     # initialize if necessary
     if ns.db is None:
         logger.info(f"loading {ns.model_name:}")
@@ -366,19 +399,21 @@ def process_files(
             )
         logger.info("done creating vectorstore")
 
-    total = ceil(len(texts) / 101)
+    total = ceil(len(ns.texts) / 101)
     if progress is None:
         # for text in progress.tqdm(
-        for idx, text in enumerate(mit.chunked_even(texts, 101)):
+        for idx, text in enumerate(mit.chunked_even(ns.texts, 101)):
             logger.debug(f"-{idx + 1} of {total}")
             ns.db.add_documents(documents=text)
     else:
         # for text in progress.tqdm(
-        for idx, text in enumerate(progress.tqdm(
-            mit.chunked_even(texts, 101),
-            total=total,
-            desc="Processing docs",
-        )):
+        for idx, text in enumerate(
+            progress.tqdm(
+                mit.chunked_even(ns.texts, 101),
+                total=total,
+                desc="Processing docs",
+            )
+        ):
             logger.debug(f"{idx + 1} of {total}")
             ns.db.add_documents(documents=text)
     logger.debug(f" done all {total}")
@@ -394,15 +429,15 @@ def process_files(
         # return_source_documents=True,
     )
 
-    ns.ingest_done = True
-    _ = [
-        [Path(doc.metadata.get("source")).name, len(doc.page_content)]
-        for doc in documents
-    ]
-    ns.files_info = _
-
     logger.debug(f"{ns.ingest_done=}, exit process_files")
-    return f"done file(s): {dict(ns.files_info)}"
+
+    _ = (
+        f"Done {total} chunks. You can now "
+        "switch to Query Docs Tab to chat. "
+        "You can chat in a language you prefer, "
+        "independent of the document language. Have fun."
+    )
+    return _
 
 
 def respond(message, chat_history):
@@ -445,6 +480,8 @@ def respond(message, chat_history):
     except Exception as exc:
         logger.error(exc)
         bot_message = f"bummer! {exc}"
+        if "empty" in str(exc):
+            bot_message = f"{bot_message} (probably invalid apikey)"
 
     chat_history.append((message, bot_message))
 
@@ -571,17 +608,20 @@ def gen_local_llm(model_id="TheBloke/vicuna-7B-1.1-HF"):
     else:
         model = LlamaForCausalLM.from_pretrained(model_id)
 
-    pipe = pipeline(
-        "text-generation",
-        model=model,
-        tokenizer=tokenizer,
-        max_length=2048,
-        temperature=0,
-        top_p=0.95,
-        repetition_penalty=1.15,
-    )
+    local_llm = None
+    if model is not None:  # to please pyright
+        pipe = pipeline(
+            "text-generation",
+            model=model,  # type: ignore
+            tokenizer=tokenizer,
+            max_length=2048,
+            temperature=0,
+            top_p=0.95,
+            repetition_penalty=1.15,
+        )
 
-    local_llm = HuggingFacePipeline(pipeline=pipe)
+        local_llm = HuggingFacePipeline(pipeline=pipe)
+
     return local_llm
 
 
@@ -666,7 +706,9 @@ def main1():
 logger.info(f"ROOT_DIRECTORY: {ROOT_DIRECTORY}")
 
 openai_api_key = os.getenv("OPENAI_API_KEY")
+openai_api_base = os.getenv("OPENAI_API_BASE")
 logger.info(f"openai_api_key (env var/hf space SECRETS): {openai_api_key}")
+logger.info(f"openai_api_base: {openai_api_base}")
 
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     # name = gr.Textbox(label="Name")
@@ -724,57 +766,12 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     upload_button.upload(upload_files, upload_button, file_output)
     process_btn.click(process_files, [], text2)
 
-    def respond(message, chat_history):
-        """Gen response."""
-        logger.info(f"{ns.ingest_done=}")
-        if ns.ingest_done is None:  # no files processed yet
-            bot_message = "Upload some file(s) for processing first."
-            chat_history.append((message, bot_message))
-            return "", chat_history
-
-        logger.info(f"{ns.ingest_done=}")
-        if not ns.ingest_done:  # embedding database not doen yet
-            bot_message = (
-                "Waiting for ingest (embedding) to finish, "
-                f"({ns.ingest_done=})"
-                "be patient... You can switch the 'Upload files' "
-                "Tab to check"
-            )
-            chat_history.append((message, bot_message))
-            return "", chat_history
-
-        _ = """
-        if ns.qa is None:  # load qa one time
-            logger.info("Loading qa, need to do just one time.")
-            ns.qa = load_qa()
-            logger.info("Done loading qa, need to do just one time.")
-        # """
-        if ns.qa is None:
-            bot_message = "Looks like the bot is not ready. Try again later..."
-            chat_history.append((message, bot_message))
-            return "", chat_history
-
-        try:
-            res = ns.qa(message)
-            answer = res.get("result")
-            docs = res.get("source_documents")
-            if docs:
-                bot_message = f"{answer}\n({docs})"
-            else:
-                bot_message = f"{answer}"
-        except Exception as exc:
-            logger.error(exc)
-            bot_message = f"bummer! {exc}"
-
-        chat_history.append((message, bot_message))
-
-        return "", chat_history
-
+    # Query docs TAB
     msg.submit(respond, [msg, chatbot], [msg, chatbot])
     clear.click(lambda: None, None, chatbot, queue=False)
 
 if __name__ == "__main__":
-    demo.queue(concurrency_count=20).launch(share=share)
+    demo.queue(concurrency_count=20).launch()
 
 _ = """
 run_localgpt
