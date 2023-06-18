@@ -429,7 +429,6 @@ def respond(message, chat_history):
         ns.qa = load_qa()
         logger.info("Done loading qa, need to do just one time.")
     # """
-    logger.debug(f"{ns.qa=}")
     if ns.qa is None:
         bot_message = "Looks like the bot is not ready. Try again later..."
         chat_history.append((message, bot_message))
