@@ -31,3 +31,5 @@ about-time
 openai
 more-itertools
 # tqdm
+
+pygpt4all

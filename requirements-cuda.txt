@@ -28,3 +28,4 @@ docx2txt
 safetensors
 about-time
 openai
+pygpt4all
