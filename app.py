@@ -403,7 +403,7 @@ def process_files(
     ns.files_info = _
 
     _ = (
-        f"done file(s): {dict(ns.files_info)}, splitted to "
+        f"done file(s): {dict(ns.files_info)}, split to "
         f"{total} chunk(s). \n\nThe following embedding takes "
         f" {total} step(s). (Each step lasts about 18 secs "
         " on a free tier instance on huggingface space.)"
