@@ -134,8 +134,12 @@ CHROMA_SETTINGS = Settings(
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"  # 1.11G
-CHUNK_SIZE = 1000  # 250
-CHUNK_OVERLAP = 100  # 50
+
+# opanai max 4097
+# retriever default k = 4, query lenght about CHUNK_SIZE
+# CHUNK_SIZE = about 4097 / 5: 820, with safety room: 625
+CHUNK_SIZE = 625  # 250
+CHUNK_OVERLAP = 60  # 50
 
 ns_initial = SimpleNamespace(
     db=None,
