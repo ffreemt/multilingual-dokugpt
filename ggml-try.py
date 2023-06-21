@@ -2,8 +2,9 @@
 
 https://raw.githubusercontent.com/imartinez/privateGPT/main/requirements.txt
 
--c https://gpt4all.io/models/ggml-gpt4all-j-v1.3-groovy.bin
-"""
+from pathlib import Path
+Path("models").mkdir(exit_ok=True)
+!time wget -c https://gpt4all.io/models/ggml-gpt4all-j-v1.3-groovy.bin -O models/ggml-gpt4all-j-v1.3-groovy.bin"""
 from dotenv import load_dotenv, dotenv_values
 from langchain.chains import RetrievalQA
 from langchain.embeddings import HuggingFaceEmbeddings
@@ -37,16 +38,14 @@ settings = dict([('PERSIST_DIRECTORY', 'db1'),
 
 # models/ggml-gpt4all-j-v1.3-groovy.bin  ~5G
 
-# all-MiniLM-L6-v2 () or
-embeddings_model_name = settings.get("EMBEDDINGS_MODEL_NAME")
-
-# embeddings_model_name = 'all-MiniLM-L6-v2'
-embeddings_model_name = 'paraphrase-multilingual-mpnet-base-v2'
-
 persist_directory = settings.get('PERSIST_DIRECTORY')
 
 model_type = settings.get('MODEL_TYPE')
 model_path = settings.get('MODEL_PATH')
+embeddings_model_name = settings.get("EMBEDDINGS_MODEL_NAME")
+# embeddings_model_name = 'all-MiniLM-L6-v2'
+# embeddings_model_name = 'paraphrase-multilingual-mpnet-base-v2'
+
 model_n_ctx = settings.get('MODEL_N_CTX')
 model_n_batch = int(settings.get('MODEL_N_BATCH',8))
 target_source_chunks = int(settings.get('TARGET_SOURCE_CHUNKS',4))
@@ -60,6 +59,7 @@ CHROMA_SETTINGS = Settings(
 
 args = SimpleNamespace(hide_source=False, mute_stream=False)
 
+# load chroma database from db1
 embeddings = HuggingFaceEmbeddings(model_name=embeddings_model_name)
 db = Chroma(persist_directory=persist_directory, embedding_function=embeddings, client_settings=CHROMA_SETTINGS)
 
@@ -79,3 +79,18 @@ match model_type:
 # need about 5G RAM
 
 qa = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever, return_source_documents= not args.hide_source)
+
+# Get the answer from the chain
+
+query = "共产党是什么"
+
+start = time.time()
+res = qa(query)
+answer, docs = res['result'], [] if args.hide_source else res['source_documents']
+end = time.time()
+
+# Print the result
+print("\n\n> Question:")
+print(query)
+print(f"\n> Answer (took {round(end - start, 2)} s.):")
+print(answer)

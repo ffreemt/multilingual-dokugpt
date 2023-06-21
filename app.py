@@ -85,7 +85,7 @@ from langchain.embeddings import (
 from langchain.llms import HuggingFacePipeline, OpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.text_splitter import (
-    CharacterTextSplitter,
+    # CharacterTextSplitter,
     RecursiveCharacterTextSplitter,
 )
 from langchain.vectorstores import FAISS, Chroma
@@ -96,8 +96,6 @@ from transformers import LlamaForCausalLM, LlamaTokenizer, pipeline
 
 from epub_loader import EpubLoader
 from load_api_key import load_api_key, pk_base, sk_base
-
-MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"  # 1.11G
 
 # fix timezone
 os.environ["TZ"] = "Asia/Shanghai"
@@ -135,6 +133,10 @@ CHROMA_SETTINGS = Settings(
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"  # 1.11G
+CHUNK_SIZE = 1000  # 250
+CHUNK_OVERLAP = 100  # 50
+
 ns_initial = SimpleNamespace(
     db=None,
     qa=None,
@@ -143,8 +145,8 @@ ns_initial = SimpleNamespace(
     files_info=None,
     files_uploaded=[],
     db_ready=None,
-    chunk_size=250,
-    chunk_overlap=250,
+    chunk_size=CHUNK_SIZE,
+    chunk_overlap=CHUNK_OVERLAP,
     model_name=MODEL_NAME,
 )
 ns = deepcopy(ns_initial)
@@ -226,65 +228,94 @@ def get_pdf_text(pdf_docs):
     return text
 
 
-def get_text_chunks(text, chunk_size=1000):
-    """docs-chat."""
-    text_splitter = CharacterTextSplitter(
-        separator="\n", chunk_size=chunk_size, chunk_overlap=200, length_function=len
+# def get_text_chunks(text, chunk_size=None, chunk_overlap=None):
+def get_doc_chunks(doc: Document, chunk_size=None, chunk_overlap=None) -> List[Document]:
+    """Generate doc chunks."""
+    if chunk_size is None:
+        chunk_size = ns.chunk_size
+    if chunk_overlap is None:
+        chunk_overlap = ns.chunk_overlap
+
+    # text_splitter = CharacterTextSplitter(
+    text_splitter = RecursiveCharacterTextSplitter(
+        # separator="\n",
+        separators=["\n\n", "\n", ".", "!", "?", ",", " ", ""],
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        length_function=len
     )
-    chunks = text_splitter.split_text(text)
+    # chunks = text_splitter.split_text(text)
+    chunks = text_splitter.split_documents(doc)
+
     return chunks
 
 
 def get_vectorstore(
-    text_chunks,
+    # text_chunks: List[Document],
+    doc_chunks: List[Document],
     vectorstore=None,
+    model_name=None,
     persist=True,
+    persist_directory=None
 ):
     """Gne vectorstore."""
     # embedding = OpenAIEmbeddings()
     # for HuggingFaceInstructEmbeddings
-    model_name = "hkunlp/instructor-xl"
-    model_name = "hkunlp/instructor-large"
-    model_name = "hkunlp/instructor-base"
+    # model_name = "hkunlp/instructor-xl"
+    # model_name = "hkunlp/instructor-large"
+    # model_name = "hkunlp/instructor-base"
 
     # embedding = HuggingFaceInstructEmbeddings(model_name=model_name)
-
-    model_name = MODEL_NAME
-    logger.info(f"Loading {model_name}")
-    embedding = SentenceTransformerEmbeddings(model_name=model_name)
-    logger.info(f"Done loading {model_name}")
 
     if vectorstore is None:
         vectorstore = "chroma"
 
+    if model_name is None:
+        model_name = MODEL_NAME
+
+    if persist_directory is None:
+        persist_directory = PERSIST_DIRECTORY
+
+    logger.info(f"Loading {model_name}")
+    embedding = SentenceTransformerEmbeddings(model_name=model_name)
+    logger.info(f"Done loading {model_name}")
+
     if vectorstore.lower() in ["chroma"]:
         logger.info(
-            "Doing vectorstore Chroma.from_texts(texts=text_chunks, embedding=embedding)"
+            # "Doing vectorstore Chroma.from_texts(texts=text_chunks, embedding=embedding)"
+            "Doing vectorstore Chroma.from_documents(texts=doc_chunks, embedding=embedding)"
         )
         if persist:
-            vectorstore = Chroma.from_texts(
-                texts=text_chunks,
+            # vectorstore = Chroma.from_texts(
+            vectorstore = Chroma.from_documents(
+                # texts=text_chunks,
+                documents=doc_chunks,
                 embedding=embedding,
                 persist_directory=PERSIST_DIRECTORY,
                 client_settings=CHROMA_SETTINGS,
             )
         else:
-            vectorstore = Chroma.from_texts(texts=text_chunks, embedding=embedding)
+            # vectorstore = Chroma.from_texts(texts=text_chunks, embedding=embedding)
+            vectorstore = Chroma.from_documents(documents=doc_chunks, embedding=embedding)
 
         logger.info(
-            "Done vectorstore FAISS.from_texts(texts=text_chunks, embedding=embedding)"
+            # "Done vectorstore Chroma.from_texts(texts=text_chunks, embedding=embedding)"
+            "Done vectorstore Chroma.from_texts(documents=doc_chunks, embedding=embedding)"
         )
 
         return vectorstore
 
     # if vectorstore.lower() not in ['chroma']
+
     # TODO handle other cases
+
     logger.info(
-        "Doing vectorstore FAISS.from_texts(texts=text_chunks, embedding=embedding)"
+        "Doing vectorstore FAISS.from_texts(documents=doc_chunks, embedding=embedding)"
     )
-    vectorstore = FAISS.from_texts(texts=text_chunks, embedding=embedding)
+    # vectorstore = FAISS.from_texts(documents=doc_chunks, embedding=embedding)
+    vectorstore = FAISS.from_documents(documents=doc_chunks, embedding=embedding)
     logger.info(
-        "Done vectorstore FAISS.from_texts(texts=text_chunks, embedding=embedding)"
+        "Done vectorstore FAISS.from_documents(documents=doc_chunks, embedding=embedding)"
     )
 
     return vectorstore
@@ -386,11 +417,10 @@ def embed_files(progress=gr.Progress()):
     # initialize if necessary
     if ns.db is None:
         logger.info(f"loading {ns.model_name:}")
+        embedding = SentenceTransformerEmbeddings(
+            model_name=ns.model_name, model_kwargs={"device": DEVICE}
+        )
         for _ in progress.tqdm(range(1), desc="diggin..."):
-            embedding = SentenceTransformerEmbeddings(
-                model_name=ns.model_name, model_kwargs={"device": DEVICE}
-            )
-
             logger.info("creating vectorstore")
             ns.db = Chroma(
                 # persist_directory=PERSIST_DIRECTORY,
