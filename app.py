@@ -138,8 +138,9 @@ MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"  # 1.11G
 # opanai max 4097
 # retriever default k = 4, query lenght about CHUNK_SIZE
 # CHUNK_SIZE = about 4097 / 5: 820, with safety room: 625
-CHUNK_SIZE = 625  # 250
-CHUNK_OVERLAP = 60  # 50
+# Chinese ~2token/char 820/2=410
+CHUNK_SIZE = 400  # 250, 625
+CHUNK_OVERLAP = 0  # 50, 60
 
 ns_initial = SimpleNamespace(
     db=None,
