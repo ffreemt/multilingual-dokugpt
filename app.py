@@ -132,8 +132,15 @@ CHROMA_SETTINGS = Settings(
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"  # 1.11G
+# https://jonathansoma.com/words/multi-language-qa-gpt.html
+# from langchain.embeddings import HuggingFaceEmbeddings
+# embeddings = HuggingFaceEmbeddings(model_name='paraphrase-multilingual-MiniLM-L12-v2')
+# https://www.sbert.net/docs/pretrained_models.html
+# 
+
 # 'max_seq_length': 128
+MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"  # 1.11G
+MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"  # 471M 
 
 # opanai max 4097
 # retriever default k = 4, query lenght about CHUNK_SIZE
