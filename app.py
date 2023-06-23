@@ -85,9 +85,8 @@ from langchain.embeddings import (
 from langchain.llms import HuggingFacePipeline, OpenAI
 from langchain.memory import ConversationBufferMemory
 from langchain.text_splitter import (
-    # CharacterTextSplitter,
     RecursiveCharacterTextSplitter,
-)
+)  # CharacterTextSplitter,
 from langchain.vectorstores import FAISS, Chroma
 from loguru import logger
 from PyPDF2 import PdfReader
@@ -134,6 +133,7 @@ CHROMA_SETTINGS = Settings(
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 MODEL_NAME = "paraphrase-multilingual-mpnet-base-v2"  # 1.11G
+# 'max_seq_length': 128
 
 # opanai max 4097
 # retriever default k = 4, query lenght about CHUNK_SIZE
@@ -233,20 +233,25 @@ def get_pdf_text(pdf_docs):
 
 
 # def get_text_chunks(text, chunk_size=None, chunk_overlap=None):
-def get_doc_chunks(doc: Document, chunk_size=None, chunk_overlap=None) -> List[Document]:
+def get_doc_chunks(
+    doc: List[Document], chunk_size=None, chunk_overlap=None, separators=None
+) -> List[Document]:
     """Generate doc chunks."""
     if chunk_size is None:
         chunk_size = ns.chunk_size
     if chunk_overlap is None:
         chunk_overlap = ns.chunk_overlap
+    if separators is None:
+        # \u3000 is a space
+        separators = ["\n\n"] + list("\n。.！!？?”】]，, \u3000") + [""]
 
     # text_splitter = CharacterTextSplitter(
     text_splitter = RecursiveCharacterTextSplitter(
         # separator="\n",
-        separators=["\n\n", "\n", ".", "!", "?", ",", " ", ""],
+        separators=separators,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        length_function=len
+        length_function=len,
     )
     # chunks = text_splitter.split_text(text)
     chunks = text_splitter.split_documents(doc)
@@ -260,7 +265,7 @@ def get_vectorstore(
     vectorstore=None,
     model_name=None,
     persist=True,
-    persist_directory=None
+    persist_directory=None,
 ):
     """Gne vectorstore."""
     # embedding = OpenAIEmbeddings()
@@ -300,7 +305,9 @@ def get_vectorstore(
             )
         else:
             # vectorstore = Chroma.from_texts(texts=text_chunks, embedding=embedding)
-            vectorstore = Chroma.from_documents(documents=doc_chunks, embedding=embedding)
+            vectorstore = Chroma.from_documents(
+                documents=doc_chunks, embedding=embedding
+            )
 
         logger.info(
             # "Done vectorstore Chroma.from_texts(texts=text_chunks, embedding=embedding)"
@@ -454,7 +461,8 @@ def embed_files(progress=gr.Progress()):
 
     # ns.qa = load_qa()
 
-    llm = OpenAI(temperature=0, max_tokens=1024)  # type: ignore
+    # client=None to make pyright happy
+    llm = OpenAI(temperature=0, max_tokens=1024, client=None)
     retriever = ns.db.as_retriever()
     ns.qa = RetrievalQA.from_chain_type(
         llm=llm,
@@ -690,6 +698,7 @@ def load_qa(device=None, model_name: str = MODEL_NAME):
     # _ = """
     # llm = gen_local_llm()  # "TheBloke/vicuna-7B-1.1-HF" 12G?
 
+    # model=gpt-3.5-turbo-16k
     llm = OpenAI(temperature=0, max_tokens=1024)  # type: ignore
     qa = RetrievalQA.from_chain_type(
         llm=llm,
