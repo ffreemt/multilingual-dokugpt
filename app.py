@@ -496,8 +496,8 @@ def embed_files(progress=gr.Progress()):
     Think step by step and be as helpful as possible. Be
     succinct, keep answers short and to the point.
     BOOK EXCERPTS:
-    {{context}}
-    QUESTION: {{question}}
+    {context}
+    QUESTION: {question}
     Your answer as the personified version of the book:"""
     prompt = PromptTemplate(
         template=prompt_template, input_variables=["context", "question"]
