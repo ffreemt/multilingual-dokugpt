@@ -434,6 +434,10 @@ def process_files(
 def embed_files(progress=gr.Progress()):
     """Embded ns.files_uploaded."""
     # initialize if necessary
+
+    # ns.db = Chroma.from_documents(doc_chunks, embedding, persist_directory='db')
+    # ns.db = Chroma.from_documents(doc_chunks, embedding)
+
     if ns.db is None:
         logger.info(f"loading {ns.model_name:}")
         embedding = SentenceTransformerEmbeddings(
@@ -479,7 +483,11 @@ def embed_files(progress=gr.Progress()):
         max_retries=3,
         client=None,
     )
-    retriever = ns.db.as_retriever()
+
+    # retriever = db.as_retriever(search_type="similarity", search_kwargs={"k": 2})
+    retriever = ns.db.as_retriever(
+        # search_kwargs={"k": 6}  # defaukt k=4
+    )
 
     prompt_template = """You're an AI version of the book and are supposed to answer quesions people
     have for the book. Thanks to advancements in AI people can
@@ -504,14 +512,23 @@ def embed_files(progress=gr.Progress()):
     )
 
     ns.qa = RetrievalQA.from_chain_type(
-        prompt=prompt,
-        input_variables=["context", "context"],
         llm=llm,
         chain_type="stuff",
         retriever=retriever,
-        # k=4,  # default 4
-        # return_source_documents=True,  # default False
+        chain_type_kwargs = {"prompt": prompt},
+        return_source_documents=True,  # default False
     )
+
+    _ = """ VectorDBQA deprecated
+    chain = RetrievalQA.from_chain_type(
+        chain_type_kwargs = {"prompt": prompt},
+        llm=llm,
+        chain_type="stuff",
+        retriever=retriever,
+        # vectorstore=ns.db,
+        return_source_documents=True,
+    )
+    # """
 
     logger.debug(f"{ns.ingest_done=}, exit process_files")
 
