@@ -7,6 +7,9 @@ Chat with multilingual documents in a language you prefer
 * Handle documents in multiple languages, multiple formats (.txt or plaintext in other suffixes, .docx, .pdf, .epub)
 * Can use PawanOsman reverse proxy free api-key of the form `pk-....`. Refer to `.env.sample`
 
+## Demo
+[https://huggingface.co/spaces/mikeee/multilingual-dokugpt](https://huggingface.co/spaces/mikeee/multilingual-dokugpt)
+
 ## Usage
 * Clone this repo
 ```

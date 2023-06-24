@@ -10,4 +10,4 @@ pinned: false
 license: mit
 ---
 
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
+[Github Repo README.md](https://github.com/ffreemt/multilingual-dokugpt/blob/main/README1.md)
