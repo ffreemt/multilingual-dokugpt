@@ -1,10 +1,11 @@
 # multilingual-dokugpt
 Chat with multilingual documents in a language you prefer
 
-`multilingual-dokugpt` is a quasi-localgpt that makes use of `langchain`, generates  embeddings `locally` and save them in a Chroma vectorstore.
+## What it is
+`multilingual-dokugpt` is a quasi-localgpt that makes use of `langchain`, generates  embeddings `locally` and save them in a Chroma vectorstore. It's `quasi-local` since querying is still made through a remote service (OPENAI or compatible).
 
 ## Features
-* Handle documents in multiple languages, multiple formats (.txt or plaintext in other suffixes, .docx, .pdf, .epub)
+* Handle documents (think of books or manuals) in multiple languages and multiple formats (.txt or plaintext in other suffixes, .docx, .pdf, .epub)
 * Can use PawanOsman reverse proxy free api-key of the form `pk-....`. Refer to `.env.sample`
 
 ## Demo
@@ -48,7 +49,7 @@ http://127.0.0.1:7860
 ```
 
 ## TODO
-* Make it a true localgpt by replacing the remote querying with a local `llm`.
+* Make it a true localgpt by replacing remote querying with a local `llm`.
 
 ## License
 `multilingual-dokugpt` is released under the MIT License. See the LICENSE file for more details.
