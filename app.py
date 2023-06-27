@@ -489,7 +489,7 @@ def embed_files(progress=gr.Progress()):
         # search_kwargs={"k": 6}  # defaukt k=4
     )
 
-    prompt_template = """You're an AI version of the book and are supposed to answer quesions people
+    prompt_template = """You're an AI version of the book and are supposed to answer questions people
     have for the book. Thanks to advancements in AI people can
     now talk directly to books.
     People have a lot of questions after reading this book,
