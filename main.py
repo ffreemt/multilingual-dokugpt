@@ -71,19 +71,22 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             text_embed = gr.Textbox("Generate embeddings")
             embed_btn = gr.Button("Click to embed")
 
-        reset_btn = gr.Button("Reset everything", visible=False)
+        reset_btn = gr.Button("Reset everything", visible=True)
 
     with gr.Tab("Query docs"):  # Tab1
         # interactive chat
         chatbot = gr.Chatbot()
         msg = gr.Textbox(label="Query")
-        clear = gr.Button("Clear")
+        with gr.Row():
+            msg_submitbtn = gr.Button("Submit")
+            clear = gr.Button("Clear")
 
     # actions
     def reset_all():
         """Reset ns."""
         # global ns
         globals().update(**{"ns": deepcopy(ns_initial)})
+        logger.debug(f"reset to {ns=}")
         return f"reset done: ns={ns}"
 
     # Tab1
@@ -94,7 +97,9 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 
     # Tab2
     msg.submit(respond, [msg, chatbot], [msg, chatbot])
-    clear.click(lambda: None, None, chatbot, queue=False)
+    msg_submitbtn.click(respond, [msg, chatbot], [msg, chatbot])
+    clear.click(lambda: None, None, chatbot, queue=True)
+    
 
 if __name__ == "__main__":
     demo.queue(concurrency_count=20).launch()

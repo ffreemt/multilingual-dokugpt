@@ -489,7 +489,7 @@ def embed_files(progress=gr.Progress()):
         # search_kwargs={"k": 6}  # defaukt k=4
     )
 
-    prompt_template = """You're an AI version of the book and are supposed to answer quesions people
+    prompt_template = """You're an AI version of the book and are supposed to answer questions people
     have for the book. Thanks to advancements in AI people can
     now talk directly to books.
     People have a lot of questions after reading this book,
@@ -848,22 +848,25 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             text2 = gr.Textbox("Gen embedding")
             process_btn = gr.Button("Click to embed")
 
-        # reset_btn = gr.Button("Reset everything", visibile=False)
+        reset_btn = gr.Button("Reset everything", visibile=True)
 
     with gr.Tab("Query docs"):
         # interactive chat
         chatbot = gr.Chatbot()
         msg = gr.Textbox(label="Query")
-        clear = gr.Button("Clear")
+        with gr.Row():
+            submit_msg = gr.Button("Submit")
+            clear = gr.Button("Clear")
 
     # actions
     def reset_all():
         """Reset ns."""
         global ns
         ns = deepcopy(ns_initial)
+        logger.debug(f"reset {ns=}")
         return f"reset done: ns={ns}"
 
-    # reset_btn.click(reset_all, [], text2)
+    clear.click(reset_all, [], text2)
 
     upload_button.upload(upload_files, upload_button, file_output)
     process_btn.click(process_files, [], text2)
