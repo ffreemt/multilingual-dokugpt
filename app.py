@@ -854,16 +854,19 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         # interactive chat
         chatbot = gr.Chatbot()
         msg = gr.Textbox(label="Query")
-        clear = gr.Button("Clear")
+        with gr.Row():
+            submit_msg = gr.Button("Submit")
+            clear = gr.Button("Clear")
 
     # actions
     def reset_all():
         """Reset ns."""
         global ns
         ns = deepcopy(ns_initial)
+        logger.debug(f"reset {ns=}")
         return f"reset done: ns={ns}"
 
-    reset_btn.click(reset_all, [], text2)
+    clear.click(reset_all, [], text2)
 
     upload_button.upload(upload_files, upload_button, file_output)
     process_btn.click(process_files, [], text2)
