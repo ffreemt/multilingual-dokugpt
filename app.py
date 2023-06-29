@@ -848,7 +848,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             text2 = gr.Textbox("Gen embedding")
             process_btn = gr.Button("Click to embed")
 
-        # reset_btn = gr.Button("Reset everything", visibile=False)
+        reset_btn = gr.Button("Reset everything", visibile=True)
 
     with gr.Tab("Query docs"):
         # interactive chat
@@ -863,7 +863,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         ns = deepcopy(ns_initial)
         return f"reset done: ns={ns}"
 
-    # reset_btn.click(reset_all, [], text2)
+    reset_btn.click(reset_all, [], text2)
 
     upload_button.upload(upload_files, upload_button, file_output)
     process_btn.click(process_files, [], text2)
