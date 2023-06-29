@@ -77,8 +77,9 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
         # interactive chat
         chatbot = gr.Chatbot()
         msg = gr.Textbox(label="Query")
-        msg_submitbtn = gr.Button("Submit")
-        clear = gr.Button("Clear")
+        with gr.Row():
+            msg_submitbtn = gr.Button("Submit")
+            clear = gr.Button("Clear")
 
     # actions
     def reset_all():
