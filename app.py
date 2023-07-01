@@ -819,7 +819,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
     # greet_btn.click(fn=greet, inputs=name, outputs=output, api_name="greet")
     #
     #  ### layout ###
-    with gr.Accordion("Info", open=False):
+    with gr.Accordion("ℹInfo", open=False):
         _ = """
             # localgpt
             Talk to your docs (.pdf, .docx, .epub, .txt .md and
@@ -833,7 +833,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
             """
         gr.Markdown(dedent(_))
 
-    with gr.Tab("Upload files"):
+    with gr.Tab("🖹Upload files"):
         # Upload files and generate vectorstore
         with gr.Row():
             file_output = gr.File()
@@ -850,7 +850,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 
         reset_btn = gr.Button("Reset everything", visibile=True)
 
-    with gr.Tab("Query docs"):
+    with gr.Tab("🤖Query docs"):
         # interactive chat
         chatbot = gr.Chatbot()
         msg = gr.Textbox(label="Query")
