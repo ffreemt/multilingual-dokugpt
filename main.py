@@ -34,7 +34,7 @@ logger.info(f"openai_api_key (env var/hf space SECRETS): {openai_api_key}")
 logger.info(f"openai_api_base: {openai_api_base}")
 
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
-    with gr.Tab("🖹Upload files"):  # Tab1
+    with gr.Tab("📚 Upload files"):  # Tab1
         with gr.Accordion("🎈 Info", open=False):
             _ = """
                 ### multilingual dokugpt/多语dokugpt
@@ -73,7 +73,7 @@ with gr.Blocks(theme=gr.themes.Soft()) as demo:
 
         reset_btn = gr.Button("Reset everything", visible=True)
 
-    with gr.Tab("🤖Query docs"):  # Tab1
+    with gr.Tab("🤖 Query docs"):  # Tab1
         # interactive chat
         chatbot = gr.Chatbot()
         msg = gr.Textbox(label="Query")
