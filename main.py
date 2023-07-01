@@ -35,7 +35,7 @@ logger.info(f"openai_api_base: {openai_api_base}")
 
 with gr.Blocks(theme=gr.themes.Soft()) as demo:
     with gr.Tab("🖹Upload files"):  # Tab1
-        with gr.Accordion("ℹInfo", open=False):
+        with gr.Accordion("🎈 Info", open=False):
             _ = """
                 ### multilingual dokugpt/多语dokugpt
 
